@@ -1,4 +1,7 @@
 package com.project.familierapi.shared.dto;
 
-public class SuccessResponse {
+public record SuccessResponse<T> (
+        String message,
+        T data
+) {
 }
