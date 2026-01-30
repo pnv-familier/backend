@@ -1,8 +1,18 @@
 spring:
   application:
     name: familier-api
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  security:
+    user:
+      name: ${APP_ADMIN_USER}
+      password: ${APP_ADMIN_PASS}
 server:
   port: 8080
-  servlet:
-    context-path: /api
-
+debug: true
