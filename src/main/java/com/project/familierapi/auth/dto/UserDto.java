@@ -19,8 +19,10 @@ public class UserDto {
     private boolean isPremium;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private boolean isSetup;
 
-    public UserDto(String id, String email, String fullName, String avatarUrl, AuthProvider authProvider, boolean isPremium, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public UserDto(String id, String email, String fullName, String avatarUrl, AuthProvider authProvider,
+                   boolean isPremium, LocalDateTime createdAt, LocalDateTime updatedAt, boolean isSetup) {
         this.id = id;
         this.email = email;
         this.fullName = fullName;
@@ -29,5 +31,6 @@ public class UserDto {
         this.isPremium = isPremium;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.isSetup = isSetup;
     }
 }

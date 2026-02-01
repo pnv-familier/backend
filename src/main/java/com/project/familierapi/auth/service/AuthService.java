@@ -5,17 +5,14 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.project.familierapi.auth.domain.AuthProvider;
-import com.project.familierapi.auth.domain.Role;
-import com.project.familierapi.auth.domain.User;
+import com.project.familierapi.user.domain.Role;
+import com.project.familierapi.user.domain.User;
 import com.project.familierapi.auth.dto.*;
 import com.project.familierapi.auth.exception.EmailAlreadyExistsException;
 import com.project.familierapi.auth.repository.UserRepository;
 import com.project.familierapi.shared.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -31,7 +28,6 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final AuthenticationManager authenticationManager;
 
     @Value("${application.security.oauth2.google.client-id}")
     private String googleClientId;
@@ -106,7 +102,8 @@ public class AuthService {
                 user.getAuthProvider(),
                 user.isPremium(),
                 user.getCreatedAt(),
-                user.getUpdatedAt()
+                user.getUpdatedAt(),
+                user.isSetup()
         );
     }
 }

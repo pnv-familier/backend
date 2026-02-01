@@ -1,5 +1,6 @@
-package com.project.familierapi.auth.domain;
+package com.project.familierapi.user.domain;
 
+import com.project.familierapi.auth.domain.AuthProvider;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,6 +13,9 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.LocalDateTime;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import java.util.Map;
 import java.util.Collection;
 import java.util.List;
 
@@ -47,8 +51,12 @@ public class User implements UserDetails {
     @Column(name = "is_premium")
     private boolean isPremium;
 
-    @Column(columnDefinition = "JSON")
-    private String preferences;
+    @Column(name = "is_setup")
+    private boolean isSetup = false;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "profile")
+    private Map<String, Object> profile;
 
     @Enumerated(EnumType.STRING)
     private Role role;
