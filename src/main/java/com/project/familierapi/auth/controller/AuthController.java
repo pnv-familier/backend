@@ -34,4 +34,11 @@ public class AuthController {
         SuccessResponse<AuthResponse> response = new SuccessResponse<>("User logged in successfully", authResponse);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/login")
+    public ResponseEntity<SuccessResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
+        AuthResponse authResponse = authService.loginWithEmailAndPassword(loginRequest.getEmail(), loginRequest.getPassword());
+        SuccessResponse<AuthResponse> response = new SuccessResponse<>("User logged in successfully", authResponse);
+        return ResponseEntity.ok(response);
+    }
 }

@@ -13,6 +13,7 @@ import com.project.familierapi.auth.repository.UserRepository;
 import com.project.familierapi.shared.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -49,9 +50,7 @@ public class AuthService {
 
         var savedUser = userRepository.save(user);
 
-        var jwtToken = jwtService.generateAccessToken(savedUser);
-        var refreshToken = jwtService.generateRefreshToken(savedUser);
-        return new AuthResponse(jwtToken, refreshToken, toUserDto(savedUser));
+        return createAuthResponse(savedUser);
     }
 
     public AuthResponse loginWithGoogle(String idToken) throws GeneralSecurityException, IOException {
@@ -88,9 +87,20 @@ public class AuthService {
                     return userRepository.save(newUser);
                 });
 
-        var jwtToken = jwtService.generateAccessToken(user);
-        var refreshToken = jwtService.generateRefreshToken(user);
-        return new AuthResponse(jwtToken, refreshToken, toUserDto(user));
+        return createAuthResponse(user);
+    }
+
+    public AuthResponse loginWithEmailAndPassword(String email, String password) {
+        var possibleUser = this.userRepository.findByEmail(email);
+        if (!possibleUser.isPresent()) {
+            throw new BadCredentialsException("Email or password is incorrect");
+        }
+        
+        User user = possibleUser.get();
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new BadCredentialsException("Email or password is incorrect");
+        }
+        return createAuthResponse(user);
     }
 
     private UserDto toUserDto(User user) {
@@ -105,5 +115,11 @@ public class AuthService {
                 user.getUpdatedAt(),
                 user.isSetup()
         );
+    }
+
+    private AuthResponse createAuthResponse(User user) {
+        var jwtToken = jwtService.generateAccessToken(user);
+        var refreshToken = jwtService.generateRefreshToken(user);
+        return new AuthResponse(jwtToken, refreshToken, toUserDto(user));
     }
 }
