@@ -1,6 +1,8 @@
 package com.project.familierapi.user.domain;
 
 import com.project.familierapi.auth.domain.AuthProvider;
+import com.project.familierapi.auth.domain.Token;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -60,6 +62,9 @@ public class User implements UserDetails {
 
     @Enumerated(EnumType.STRING)
     private Role role;
+
+    @OneToMany(mappedBy = "user")
+    private List<Token> tokens;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
