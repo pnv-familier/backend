@@ -2,6 +2,7 @@ package com.project.familierapi.family.service;
 
 import com.project.familierapi.family.domain.Family;
 import com.project.familierapi.family.repository.FamilyRepository;
+import com.project.familierapi.family.exception.FamilyCreationException;
 import org.springframework.stereotype.Service;
 import java.util.Random;
 
@@ -16,9 +17,14 @@ public class FamilyService {
         this.familyRepository = familyRepository;
     }
 
-    public Family createFamily(String name) {
+    public Family createFamily(String name, String userId) {
+        if (familyRepository.existsByUserId(userId)) {
+            throw new FamilyCreationException("User already has a family. Cannot create another family.");
+        }
+
         Family family = new Family();
         family.setName(name);
+        family.setUserId(userId);
         
         String code;
         do {

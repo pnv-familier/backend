@@ -7,4 +7,6 @@ import com.project.familierapi.family.domain.Family;
 public interface FamilyRepository extends JpaRepository<Family, String> {
 
     boolean existsByInviteCode(String inviteCode);
+
+    boolean existsByUserId(String userId);
 }

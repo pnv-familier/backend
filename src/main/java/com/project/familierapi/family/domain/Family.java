@@ -20,4 +20,7 @@ public class Family {
 
     @Column(unique = true, nullable = false, length = 20, name = "invite_code")
     private String inviteCode;
+
+    @Column(nullable = false, name = "user_id")
+    private String userId;
 }

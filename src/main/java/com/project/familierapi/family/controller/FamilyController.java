@@ -7,6 +7,8 @@ import com.project.familierapi.family.service.FamilyService;
 import com.project.familierapi.shared.dto.SuccessResponse;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 
@@ -22,7 +24,8 @@ public class FamilyController {
 
     @PostMapping("")
     public ResponseEntity<SuccessResponse<FamilyResponseDto>> createFamily(@RequestBody CreateFamilyRequestDto request) {
-        Family family = familyService.createFamily(request.name());
+        String userId = SecurityContextHolder.getContext().getAuthentication().getName();
+        Family family = familyService.createFamily(request.name(), userId);
         FamilyResponseDto responseDto = new FamilyResponseDto(family.getId(), family.getName(), family.getInviteCode());
         SuccessResponse<FamilyResponseDto> successResponse = new SuccessResponse<>("Family created successfully", responseDto);
         return ResponseEntity.ok(successResponse);
