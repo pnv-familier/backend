@@ -2,6 +2,7 @@ package com.project.familierapi.shared.exception;
 
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.project.familierapi.auth.exception.EmailAlreadyExistsException;
+import com.project.familierapi.family.exception.FamilyCreationException;
 import com.project.familierapi.shared.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -24,6 +25,12 @@ public class GlobalExceptionHandler {
         ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getRequestURI());
         return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
     }
+    
+    @ExceptionHandler(FamilyCreationException.class)
+    public ResponseEntity<ErrorResponse> handleFamilyCreationException(FamilyCreationException ex, HttpServletRequest request) {
+        ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getRequestURI());
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex, HttpServletRequest request) {
@@ -42,7 +49,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({UsernameNotFoundException.class, NoSuchElementException.class})
     public ResponseEntity<ErrorResponse> handleUserNotFoundException(Exception ex, HttpServletRequest request) {
-        ErrorResponse errorResponse = new ErrorResponse("User not found", request.getRequestURI());
+        ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getRequestURI());
         return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
     }
 

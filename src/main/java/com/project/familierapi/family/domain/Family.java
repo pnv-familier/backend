@@ -1,9 +1,13 @@
 package com.project.familierapi.family.domain;
 
-import java.util.UUID;
+import com.project.familierapi.user.domain.User;
 
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.util.List;
+import java.util.UUID;
+
 
 @Entity
 @Table(name = "families")
@@ -21,6 +25,10 @@ public class Family {
     @Column(unique = true, nullable = false, length = 20, name = "invite_code")
     private String inviteCode;
 
-    @Column(nullable = false, name = "user_id")
-    private String userId;
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @OneToMany(mappedBy = "family", cascade = CascadeType.ALL)
+    private List<FamilyMember> members;
 }

@@ -2,6 +2,7 @@ package com.project.familierapi.user.domain;
 
 import com.project.familierapi.auth.domain.AuthProvider;
 import com.project.familierapi.auth.domain.Token;
+import com.project.familierapi.family.domain.FamilyMember;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -73,6 +74,9 @@ public class User implements UserDetails {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
+    private FamilyMember family;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

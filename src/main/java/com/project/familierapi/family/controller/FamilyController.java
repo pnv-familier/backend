@@ -3,11 +3,12 @@ package com.project.familierapi.family.controller;
 import com.project.familierapi.family.domain.Family;
 import com.project.familierapi.family.dto.CreateFamilyRequestDto;
 import com.project.familierapi.family.dto.FamilyResponseDto;
+import com.project.familierapi.family.dto.MyFamilyResponseDto;
 import com.project.familierapi.family.service.FamilyService;
 import com.project.familierapi.shared.dto.SuccessResponse;
+import com.project.familierapi.user.domain.User;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,10 +25,18 @@ public class FamilyController {
 
     @PostMapping("")
     public ResponseEntity<SuccessResponse<FamilyResponseDto>> createFamily(@RequestBody CreateFamilyRequestDto request) {
-        String userId = SecurityContextHolder.getContext().getAuthentication().getName();
-        Family family = familyService.createFamily(request.name(), userId);
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Family family = familyService.createFamily(request.name(), user);
         FamilyResponseDto responseDto = new FamilyResponseDto(family.getId(), family.getName(), family.getInviteCode());
         SuccessResponse<FamilyResponseDto> successResponse = new SuccessResponse<>("Family created successfully", responseDto);
+        return ResponseEntity.ok(successResponse);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<SuccessResponse<MyFamilyResponseDto>> getMyFamily() {
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        MyFamilyResponseDto responseDto = familyService.getMyFamily(user);
+        SuccessResponse<MyFamilyResponseDto> successResponse = new SuccessResponse<>("Family details retrieved successfully", responseDto);
         return ResponseEntity.ok(successResponse);
     }
 }
