@@ -3,6 +3,7 @@ package com.project.familierapi.family.controller;
 import com.project.familierapi.family.domain.Family;
 import com.project.familierapi.family.dto.CreateFamilyRequestDto;
 import com.project.familierapi.family.dto.FamilyResponseDto;
+import com.project.familierapi.family.dto.JoinFamilyRequestDto;
 import com.project.familierapi.family.dto.MyFamilyResponseDto;
 import com.project.familierapi.family.service.FamilyService;
 import com.project.familierapi.shared.dto.SuccessResponse;
@@ -37,6 +38,14 @@ public class FamilyController {
         User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         MyFamilyResponseDto responseDto = familyService.getMyFamily(user);
         SuccessResponse<MyFamilyResponseDto> successResponse = new SuccessResponse<>("Family details retrieved successfully", responseDto);
+        return ResponseEntity.ok(successResponse);
+    }
+
+    @PostMapping("/join")
+    public ResponseEntity<SuccessResponse<MyFamilyResponseDto>> joinFamily(@RequestBody JoinFamilyRequestDto request) {
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        MyFamilyResponseDto responseDto = familyService.joinFamily(request.inviteCode(), user);
+        SuccessResponse<MyFamilyResponseDto> successResponse = new SuccessResponse<>("Successfully joined family", responseDto);
         return ResponseEntity.ok(successResponse);
     }
 }

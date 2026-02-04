@@ -8,6 +8,8 @@ import com.project.familierapi.family.dto.MyFamilyResponseDto;
 import com.project.familierapi.family.repository.FamilyMemberRepository;
 import com.project.familierapi.family.repository.FamilyRepository;
 import com.project.familierapi.family.exception.FamilyCreationException;
+import com.project.familierapi.family.exception.InvalidFamilyCodeException;
+import com.project.familierapi.family.exception.UserAlreadyInFamilyException;
 import com.project.familierapi.user.domain.User;
 import jakarta.transaction.Transactional;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -88,5 +90,38 @@ public class FamilyService {
         }
 
         return sb.toString();
+    }
+
+    @Transactional
+    public MyFamilyResponseDto joinFamily(String inviteCode, User user) {
+        if (inviteCode == null || inviteCode.trim().isEmpty()) {
+            throw new InvalidFamilyCodeException("Please enter a family code");
+        }
+
+        String cleanCode = inviteCode.replaceAll("\\s+", "").toUpperCase();
+
+        if (familyMemberRepository.findByUserId(user.getId()).isPresent()) {
+            throw new UserAlreadyInFamilyException("You are already in a family. Leave current family first?");
+        }
+
+        Family family = familyRepository.findByInviteCode(cleanCode)
+                .orElseThrow(() -> new InvalidFamilyCodeException("Invalid code. Please check and try again"));
+
+        FamilyMember familyMember = FamilyMember.builder()
+                .family(family)
+                .user(user)
+                .role(FamilyRole.MEMBER)
+                .nickname(user.getFullName())
+                .build();
+        familyMemberRepository.save(familyMember);
+
+        return new MyFamilyResponseDto(
+                family.getId(),
+                family.getName(),
+                family.getInviteCode(),
+                familyMember.getNickname(),
+                familyMember.getRole(),
+                familyMember.getJoinedAt()
+        );
     }
 }
