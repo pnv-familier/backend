@@ -13,6 +13,3 @@ application:
       secret-key: DayLaMotCaiSecretKeyRatDaiVaBaoMatDeTestHeThongCuaToi123456789
       access-token-expiration: 3600000
       refresh-token-expiration: 604800000
-    oauth2:
-      google:
-        client-id: DayLaMotCaiSecretKeyRatDaiVaBaoMatDeTestHeThongCuaToi123456789.clientID
