@@ -3,6 +3,8 @@ package com.project.familierapi.shared.exception;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.project.familierapi.auth.exception.EmailAlreadyExistsException;
 import com.project.familierapi.family.exception.FamilyCreationException;
+import com.project.familierapi.family.exception.InvalidFamilyCodeException;
+import com.project.familierapi.family.exception.UserAlreadyInFamilyException;
 import com.project.familierapi.shared.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -28,6 +30,18 @@ public class GlobalExceptionHandler {
     
     @ExceptionHandler(FamilyCreationException.class)
     public ResponseEntity<ErrorResponse> handleFamilyCreationException(FamilyCreationException ex, HttpServletRequest request) {
+        ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getRequestURI());
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(InvalidFamilyCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidFamilyCodeException(InvalidFamilyCodeException ex, HttpServletRequest request) {
+        ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getRequestURI());
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(UserAlreadyInFamilyException.class)
+    public ResponseEntity<ErrorResponse> handleUserAlreadyInFamilyException(UserAlreadyInFamilyException ex, HttpServletRequest request) {
         ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getRequestURI());
         return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
     }
