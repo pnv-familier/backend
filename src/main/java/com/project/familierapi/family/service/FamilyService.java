@@ -5,6 +5,8 @@ import com.project.familierapi.family.domain.Family;
 import com.project.familierapi.family.domain.FamilyMember;
 import com.project.familierapi.family.domain.FamilyRole;
 import com.project.familierapi.family.dto.MyFamilyResponseDto;
+import com.project.familierapi.family.dto.FamilyMemberDto;
+import com.project.familierapi.family.dto.FamilyMemberListResponseDto;
 import com.project.familierapi.family.repository.FamilyMemberRepository;
 import com.project.familierapi.family.repository.FamilyRepository;
 import com.project.familierapi.family.exception.FamilyCreationException;
@@ -12,10 +14,11 @@ import com.project.familierapi.family.exception.InvalidFamilyCodeException;
 import com.project.familierapi.family.exception.UserAlreadyInFamilyException;
 import com.project.familierapi.user.domain.User;
 import jakarta.transaction.Transactional;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import java.util.NoSuchElementException;
 import java.util.Random;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class FamilyService {
@@ -123,5 +126,24 @@ public class FamilyService {
                 familyMember.getRole(),
                 familyMember.getJoinedAt()
         );
+    }
+
+    public FamilyMemberListResponseDto getFamilyMembers(User user) {
+        FamilyMember currentUserMember = familyMemberRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new NoSuchElementException("User is not part of any family."));
+
+        List<FamilyMember> members = familyMemberRepository.findByFamilyIdOrderByJoinedAt(currentUserMember.getFamily().getId());
+        
+        List<FamilyMemberDto> memberDtos = members.stream()
+                .map(member -> new FamilyMemberDto(
+                        member.getUser().getId(),
+                        member.getNickname(),
+                        member.getUser().getAvatarUrl(),
+                        member.getRole(),
+                        member.getJoinedAt()
+                ))
+                .collect(Collectors.toList());
+
+        return new FamilyMemberListResponseDto(memberDtos, members.size() == 1, currentUserMember.getFamily().getCreatedAt());
     }
 }
