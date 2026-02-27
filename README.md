@@ -44,7 +44,7 @@ http://localhost:8080/actuator/health
 ### 📄 API Documentation
 Swagger UI (API-first approach):
 
-http://localhost:8080/swagger-ui.html
+http://localhost:8080/swagger-ui/index.html
 
 ### 📂 Project Structure
 The backend follows a modular monolith architecture:
