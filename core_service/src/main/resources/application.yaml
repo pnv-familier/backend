@@ -14,7 +14,7 @@ spring:
       name: ${APP_ADMIN_USER}
       password: ${APP_ADMIN_PASS}
 server:
-  port: ${PORT}
+  port: ${CORE_SERVICE_PORT:8081}
 debug: true
 
 application:

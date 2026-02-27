@@ -1,4 +1,4 @@
-name: Build & Deploy Docker Image
+name: Build & Deploy Docker Image Core Service
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
 jobs:
   docker:
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: core_service
 
     steps:
       - name: Checkout source
