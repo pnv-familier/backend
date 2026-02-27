@@ -1,12 +1,19 @@
-name: CI Integration Health Check
+name: CI Integration Health Check For Core Service
 
 on:
   pull_request:
     branches: [ "main", "dev" ]
+    paths:
+      - 'core_service/**'
+      - 'pom.xml'
 
 jobs:
   ci:
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+          working-directory: core_service
 
     services:
       mysql:
@@ -60,6 +67,7 @@ jobs:
           SPRING_DATASOURCE_PASSWORD: test
           SPRING_PROFILES_ACTIVE: dev
           PUBLIC_GOOGLE_CLIENT_ID: this_is_a_fake_client_id_for_testing_purposes_only.apps.googleusercontent.com
+          CORE_SERVICE_PORT: 8080
 
         run: |
           nohup mvn spring-boot:run -DskipTests > app.log 2>&1 &
