@@ -11,7 +11,6 @@ import com.project.familierapi.shared.dto.SuccessResponse;
 import com.project.familierapi.user.domain.User;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 
@@ -21,13 +20,18 @@ import org.springframework.web.bind.annotation.*;
 public class FamilyController {
     private final FamilyService familyService;
 
-    public FamilyController(FamilyService familyService) {
+    private final com.project.familierapi.user.service.UserService userService;
+
+    public FamilyController(FamilyService familyService, com.project.familierapi.user.service.UserService userService) {
         this.familyService = familyService;
+        this.userService = userService;
     }
 
     @PostMapping("")
-    public ResponseEntity<SuccessResponse<FamilyResponseDto>> createFamily(@RequestBody CreateFamilyRequestDto request) {
-        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    public ResponseEntity<SuccessResponse<FamilyResponseDto>> createFamily(
+            @RequestHeader("X-User-Email") String userEmail,
+            @RequestBody CreateFamilyRequestDto request) {
+        User user = userService.getUserByEmail(userEmail);
         Family family = familyService.createFamily(request.name(), user);
         FamilyResponseDto responseDto = new FamilyResponseDto(family.getId(), family.getName(), family.getInviteCode(), family.getCreatedAt());
         SuccessResponse<FamilyResponseDto> successResponse = new SuccessResponse<>("Family created successfully", responseDto);
@@ -35,24 +39,28 @@ public class FamilyController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<SuccessResponse<MyFamilyResponseDto>> getMyFamily() {
-        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    public ResponseEntity<SuccessResponse<MyFamilyResponseDto>> getMyFamily(
+            @RequestHeader("X-User-Email") String userEmail) {
+        User user = userService.getUserByEmail(userEmail);
         MyFamilyResponseDto responseDto = familyService.getMyFamily(user);
         SuccessResponse<MyFamilyResponseDto> successResponse = new SuccessResponse<>("Family details retrieved successfully", responseDto);
         return ResponseEntity.ok(successResponse);
     }
 
     @PostMapping("/join")
-    public ResponseEntity<SuccessResponse<MyFamilyResponseDto>> joinFamily(@RequestBody JoinFamilyRequestDto request) {
-        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    public ResponseEntity<SuccessResponse<MyFamilyResponseDto>> joinFamily(
+            @RequestHeader("X-User-Email") String userEmail,
+            @RequestBody JoinFamilyRequestDto request) {
+        User user = userService.getUserByEmail(userEmail);
         MyFamilyResponseDto responseDto = familyService.joinFamily(request.inviteCode(), user);
         SuccessResponse<MyFamilyResponseDto> successResponse = new SuccessResponse<>("Successfully joined family", responseDto);
         return ResponseEntity.ok(successResponse);
     }
 
     @GetMapping("/members")
-    public ResponseEntity<SuccessResponse<FamilyMemberListResponseDto>> getFamilyMembers() {
-        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    public ResponseEntity<SuccessResponse<FamilyMemberListResponseDto>> getFamilyMembers(
+            @RequestHeader("X-User-Email") String userEmail) {
+        User user = userService.getUserByEmail(userEmail);
         FamilyMemberListResponseDto responseDto = familyService.getFamilyMembers(user);
         SuccessResponse<FamilyMemberListResponseDto> successResponse = new SuccessResponse<>("Family members retrieved successfully", responseDto);
         return ResponseEntity.ok(successResponse);
