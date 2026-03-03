@@ -5,7 +5,6 @@ import com.project.familierapi.user.domain.User;
 import com.project.familierapi.user.dto.UpdateProfileRequest;
 import com.project.familierapi.auth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -17,9 +16,12 @@ public class UserService {
 
     private final UserRepository userRepository;
 
-    public UserDto getCurrentUser() {
-        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    public UserDto getCurrentUser(User user) {
         return toUserDto(user);
+    }
+
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
     }
 
     public UserDto updateProfile(User currentUser, UpdateProfileRequest request) {

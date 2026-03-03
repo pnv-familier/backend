@@ -23,6 +23,8 @@ application:
       secret-key: ${JWT_SECRET}
       access-token-expiration: 3600000
       refresh-token-expiration: 604800000
+    internal:
+      secret: ${INTERNAL_SHARED_SECRET:default_internal_secret}
     oauth2:
       google:
         client-id: ${PUBLIC_GOOGLE_CLIENT_ID}

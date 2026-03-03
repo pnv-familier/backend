@@ -7,7 +7,6 @@ import com.project.familierapi.user.dto.UpdateProfileRequest;
 import com.project.familierapi.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,17 +17,20 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping("/me")
-    public ResponseEntity<SuccessResponse<UserDto>> getCurrentUser() {
-        UserDto userDto = userService.getCurrentUser();
+    public ResponseEntity<SuccessResponse<UserDto>> getCurrentUser(
+            @RequestHeader("X-User-Email") String userEmail) {
+        User user = userService.getUserByEmail(userEmail);
+        UserDto userDto = userService.getCurrentUser(user);
         SuccessResponse<UserDto> response = new SuccessResponse<>("User details fetched successfully", userDto);
         return ResponseEntity.ok(response);
     }
 
     @PutMapping("/profile")
     public ResponseEntity<SuccessResponse<UserDto>> updateProfile(
-            @AuthenticationPrincipal User currentUser,
+            @RequestHeader("X-User-Email") String userEmail,
             @RequestBody UpdateProfileRequest request) {
-        UserDto updatedUserDto = userService.updateProfile(currentUser, request);
+        User user = userService.getUserByEmail(userEmail);
+        UserDto updatedUserDto = userService.updateProfile(user, request);
         SuccessResponse<UserDto> response = new SuccessResponse<>("User profile updated successfully", updatedUserDto);
         return ResponseEntity.ok(response);
     }
