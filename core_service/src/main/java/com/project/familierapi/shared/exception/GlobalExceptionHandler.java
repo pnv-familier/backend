@@ -5,6 +5,7 @@ import com.project.familierapi.auth.exception.EmailAlreadyExistsException;
 import com.project.familierapi.family.exception.FamilyCreationException;
 import com.project.familierapi.family.exception.InvalidFamilyCodeException;
 import com.project.familierapi.family.exception.UserAlreadyInFamilyException;
+import com.project.familierapi.post.exception.PostNotFoundException;
 import com.project.familierapi.shared.dto.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -61,14 +62,14 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
     }
 
-    @ExceptionHandler({UsernameNotFoundException.class, NoSuchElementException.class})
+    @ExceptionHandler({UsernameNotFoundException.class, NoSuchElementException.class, PostNotFoundException.class})
     public ResponseEntity<ErrorResponse> handleUserNotFoundException(Exception ex, HttpServletRequest request) {
         ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getRequestURI());
         return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex, HttpServletRequest request) {
+    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
+    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(Exception ex, HttpServletRequest request) {
         ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getRequestURI());
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
