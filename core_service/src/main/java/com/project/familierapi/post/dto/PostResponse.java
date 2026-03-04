@@ -18,6 +18,7 @@ public class PostResponse {
     private String content;
     private LocalDateTime createdAt;
     private List<String> images;
+    private List<String> videos;
     private Integer reactionCount;
     private Integer commentCount;
     private boolean hasMore;

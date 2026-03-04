@@ -11,7 +11,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreatePostRequest {
+public class UpdatePostRequest {
     private String content;
     private List<String> imageUrls;
     private List<String> videoUrls;
