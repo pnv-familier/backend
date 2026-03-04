@@ -7,7 +7,9 @@ import com.familier.ai.entity.Sender;
 import com.familier.ai.repository.ChatMessageRepository;
 import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.service.PromptService;
+import com.familier.ai.service.grpc.UserContextServiceClient;
 import com.familier.ai.util.AiContextFactory;
+import com.familier.grpc.UserProfileResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.data.domain.PageRequest;
@@ -32,6 +34,7 @@ public class AiController {
     private final AiContextFactory aiContextFactory;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final UserContextServiceClient userContextServiceClient;
 
     private static final String TEST_USER_ID = "user_test_01";
 
@@ -42,27 +45,47 @@ public class AiController {
                         PromptService promptService, 
                         AiContextFactory aiContextFactory,
                         ChatSessionRepository chatSessionRepository,
-                        ChatMessageRepository chatMessageRepository) {
+                        ChatMessageRepository chatMessageRepository,
+                        UserContextServiceClient userContextServiceClient) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
         this.promptService = promptService;
         this.aiContextFactory = aiContextFactory;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
+        this.userContextServiceClient = userContextServiceClient;
     }
 
     @GetMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Mono<ResponseEntity<Flux<ServerSentEvent<String>>>> streamAiResponse(
             @RequestParam String message,
-            @RequestParam(required = false) String sessionId) throws Exception {
+            @RequestParam(required = false) String sessionId,
+            @RequestHeader(name = "X-User-Email", required = false) String userEmail) throws Exception {
 
-        Map<String, String> context = aiContextFactory.createCurrentContext(1L);
-        String systemPrompt = promptService.loadSystemPrompt("virtual_member_v1", context);
+        String email = (userEmail != null && !userEmail.isEmpty()) ? userEmail : "test@example.com";
 
-        return getOrCreateSession(sessionId, message)
-                .map(session -> ResponseEntity.ok()
-                        .header("X-Session-Id", session.getId())
-                        .body(saveUserMessage(session.getId(), message)
-                                .flatMapMany(savedMsg -> executeAiStream(session.getId(), message, systemPrompt))));
+        return userContextServiceClient.getUserProfile(email)
+                .flatMap(userProfile -> {
+                    try {
+                        String userContext = formatUserContext(userProfile);
+                        Map<String, String> vars = Map.of("USER_CONTEXT", userContext);
+                        String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v2", vars);
+
+                        return getOrCreateSession(sessionId, message)
+                                .map(session -> ResponseEntity.ok()
+                                        .header("X-Session-Id", session.getId())
+                                        .body(saveUserMessage(session.getId(), message)
+                                                .flatMapMany(savedMsg -> executeAiStream(session.getId(), message, enrichedPrompt))));
+                    } catch (Exception e) {
+                        return Mono.error(e);
+                    }
+                });
+    }
+
+    private String formatUserContext(UserProfileResponse profile) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Full Name: ").append(profile.getFullName()).append("\n");
+        sb.append("Profile Details: ").append(profile.getProfileJson());
+        return sb.toString();
     }
 
     private Mono<ChatMessage> saveUserMessage(String sessionId, String content) {

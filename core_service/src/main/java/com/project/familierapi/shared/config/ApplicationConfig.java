@@ -12,12 +12,18 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import net.devh.boot.grpc.server.security.authentication.GrpcAuthenticationReader;
 
 @Configuration
 @RequiredArgsConstructor
 public class ApplicationConfig {
 
     private final UserRepository userRepository;
+
+    @Bean
+    public GrpcAuthenticationReader grpcAuthenticationReader() {
+        return (call, metadata) -> null;
+    }
 
     @Bean
     public UserDetailsService userDetailsService() {

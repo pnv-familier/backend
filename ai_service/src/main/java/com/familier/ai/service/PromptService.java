@@ -18,7 +18,10 @@ public class PromptService {
 
     public String loadSystemPrompt(String fileName, Map<String, String> variables) throws Exception {
         String content = loadRawContent(fileName);
+        return enrichPrompt(content, variables);
+    }
 
+    private String enrichPrompt(String content, Map<String, String> variables) {
         if (variables == null || variables.isEmpty()) return content;
 
         for (Map.Entry<String, String> entry : variables.entrySet()) {
