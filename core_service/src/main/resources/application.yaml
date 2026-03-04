@@ -13,6 +13,10 @@ spring:
     user:
       name: ${APP_ADMIN_USER}
       password: ${APP_ADMIN_PASS}
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
 server:
   port: ${CORE_SERVICE_PORT:8081}
 debug: true
@@ -28,3 +32,8 @@ application:
     oauth2:
       google:
         client-id: ${PUBLIC_GOOGLE_CLIENT_ID}
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
