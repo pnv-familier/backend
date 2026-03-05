@@ -18,7 +18,10 @@ public class PromptService {
 
     public String loadSystemPrompt(String fileName, Map<String, String> variables) throws Exception {
         String content = loadRawContent(fileName);
+        return enrichPrompt(content, variables);
+    }
 
+    private String enrichPrompt(String content, Map<String, String> variables) {
         if (variables == null || variables.isEmpty()) return content;
 
         for (Map.Entry<String, String> entry : variables.entrySet()) {
@@ -31,10 +34,11 @@ public class PromptService {
     }
 
     private String loadRawContent(String fileName) throws Exception {
-        Resource resource = resourceLoader.getResource("classpath:prompts/" + fileName + ".md");
+        Resource resource = resourceLoader.getResource("classpath:prompts/" + fileName + ".txt");
 
-        String content = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
-        return content;
+        try (java.io.InputStream is = resource.getInputStream()) {
+            return StreamUtils.copyToString(is, StandardCharsets.UTF_8);
+        }
     }
 
 }

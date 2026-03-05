@@ -17,6 +17,17 @@ services:
     networks:
       - familier-network
 
+  mongodb:
+    image: mongo:latest
+    container_name: familier-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - familier-network
+
   core-service:
     build:
       context: ./core_service
@@ -68,8 +79,11 @@ services:
       - "8082:8082"
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - MONGODB_URI=mongodb://mongodb:27017/familier_ai
       - AI_SERVICE_PORT=8082
       - PORT=8082
+    depends_on:
+      - mongodb
     networks:
       - familier-network
 
@@ -79,3 +93,4 @@ networks:
 
 volumes:
   mysql_data:
+  mongo_data:
