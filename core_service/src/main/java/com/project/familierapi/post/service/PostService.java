@@ -11,6 +11,7 @@ import com.project.familierapi.post.dto.PostResponse;
 import com.project.familierapi.post.dto.UpdatePostRequest;
 import com.project.familierapi.post.exception.PostNotFoundException;
 import com.project.familierapi.post.repository.PostRepository;
+import com.project.familierapi.post.repository.ReactionRepository;
 import com.project.familierapi.user.domain.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ import java.util.stream.IntStream;
 public class PostService {
     private static final int PREVIEW_LIMIT = 200;
     private final PostRepository postRepository;
+    private final ReactionRepository reactionRepository;
 
     @Transactional(readOnly = true)
     public FeedResponse getHomeFeed(User user) {
@@ -41,7 +43,7 @@ public class PostService {
         List<Post> posts = postRepository.findByFamilyIdOrderByCreatedAtDesc(familyId);
 
         List<PostResponse> postResponses = posts.stream()
-                .map(this::mapToPostResponse)
+                .map(post -> mapToPostResponse(post, user))
                 .collect(Collectors.toList());
 
         return FeedResponse.builder()
@@ -50,7 +52,7 @@ public class PostService {
                 .build();
     }
 
-    private PostResponse mapToPostResponse(Post post) {
+    private PostResponse mapToPostResponse(Post post, User currentUser) {
         String content = post.getContent();
         boolean hasMore = content != null && content.length() > PREVIEW_LIMIT;
 
@@ -68,8 +70,10 @@ public class PostService {
                     .collect(Collectors.toList())
                 : List.of();
 
-        int reactionCount = post.getReactions() != null ? post.getReactions().size() : 0;
+        int reactionCount = reactionRepository.countByPostPostId(post.getPostId());
         int commentCount = post.getComments() != null ? post.getComments().size() : 0;
+
+        var userReaction = reactionRepository.findByPostPostIdAndUserId(post.getPostId(), currentUser.getId());
 
         return PostResponse.builder()
                 .postId(post.getPostId())
@@ -85,12 +89,9 @@ public class PostService {
                 .reactionCount(reactionCount)
                 .commentCount(commentCount)
                 .hasMore(hasMore)
+                .isReacted(userReaction.isPresent())
+                .reactionType(userReaction.map(r -> r.getReactionType().name()).orElse(null))
                 .build();
-    }
-
-    private PostResponse mapToPostResponse(Post post, User currentUser) {
-        PostResponse response = mapToPostResponse(post);
-        return response;
     }
 
     @Transactional
@@ -149,7 +150,7 @@ public class PostService {
         }
 
         post = postRepository.save(post);
-        return mapToPostResponse(post);
+        return mapToPostResponse(post, user);
     }
 
     @Transactional
@@ -200,7 +201,7 @@ public class PostService {
             post = postRepository.save(post);
         }
 
-        return mapToPostResponse(post);
+        return mapToPostResponse(post, user);
     }
 
     @Transactional(readOnly = true)

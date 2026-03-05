@@ -22,6 +22,8 @@ public class PostResponse {
     private Integer reactionCount;
     private Integer commentCount;
     private boolean hasMore;
+    private Boolean isReacted;
+    private String reactionType;
 
     @Data
     @Builder
