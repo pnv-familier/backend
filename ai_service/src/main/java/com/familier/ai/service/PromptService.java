@@ -34,10 +34,11 @@ public class PromptService {
     }
 
     private String loadRawContent(String fileName) throws Exception {
-        Resource resource = resourceLoader.getResource("classpath:prompts/" + fileName + ".md");
+        Resource resource = resourceLoader.getResource("classpath:prompts/" + fileName + ".txt");
 
-        String content = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
-        return content;
+        try (java.io.InputStream is = resource.getInputStream()) {
+            return StreamUtils.copyToString(is, StandardCharsets.UTF_8);
+        }
     }
 
 }

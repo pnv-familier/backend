@@ -8,7 +8,6 @@ import com.familier.ai.repository.ChatMessageRepository;
 import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.service.PromptService;
 import com.familier.ai.service.grpc.UserContextServiceClient;
-import com.familier.ai.util.AiContextFactory;
 import com.familier.grpc.UserProfileResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -31,25 +30,20 @@ public class AiController {
 
     private final WebClient webClient;
     private final PromptService promptService;
-    private final AiContextFactory aiContextFactory;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final UserContextServiceClient userContextServiceClient;
-
-    private static final String TEST_USER_ID = "user_test_01";
 
     @Value("${gemini.api-key}")
     private String API_KEY;
 
     public AiController(WebClient.Builder webClientBuilder, 
                         PromptService promptService, 
-                        AiContextFactory aiContextFactory,
                         ChatSessionRepository chatSessionRepository,
                         ChatMessageRepository chatMessageRepository,
                         UserContextServiceClient userContextServiceClient) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
         this.promptService = promptService;
-        this.aiContextFactory = aiContextFactory;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.userContextServiceClient = userContextServiceClient;
@@ -59,9 +53,7 @@ public class AiController {
     public Mono<ResponseEntity<Flux<ServerSentEvent<String>>>> streamAiResponse(
             @RequestParam String message,
             @RequestParam(required = false) String sessionId,
-            @RequestHeader(name = "X-User-Email", required = false) String userEmail) throws Exception {
-
-        String email = (userEmail != null && !userEmail.isEmpty()) ? userEmail : "test@example.com";
+            @RequestHeader(name = "X-User-Email") String email) throws Exception {
 
         return userContextServiceClient.getUserProfile(email)
                 .flatMap(userProfile -> {
@@ -70,7 +62,7 @@ public class AiController {
                         Map<String, String> vars = Map.of("USER_CONTEXT", userContext);
                         String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v2", vars);
 
-                        return getOrCreateSession(sessionId, message)
+                        return getOrCreateSession(sessionId, message, email)
                                 .map(session -> ResponseEntity.ok()
                                         .header("X-Session-Id", session.getId())
                                         .body(saveUserMessage(session.getId(), message)
@@ -135,24 +127,29 @@ public class AiController {
     @GetMapping("/sessions")
     public Flux<ChatSession> getSessions(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return chatSessionRepository.findAllByUserIdOrderByCreatedAtDesc(TEST_USER_ID, PageRequest.of(page, size));
+            @RequestParam(defaultValue = "10") int size,
+            @RequestHeader(name = "X-User-Email") String email) {
+        return chatSessionRepository.findAllByUserEmailOrderByCreatedAtDesc(email, PageRequest.of(page, size));
     }
 
     @GetMapping("/history/{sessionId}")
-    public Flux<ChatMessageDto> getHistory(@PathVariable String sessionId) {
-        return chatMessageRepository.findAllBySessionIdOrderByTimestampAsc(sessionId)
+    public Flux<ChatMessageDto> getHistory(
+            @PathVariable String sessionId,
+            @RequestHeader(name = "X-User-Email") String email) {
+        return chatSessionRepository.findById(sessionId)
+                .filter(session -> session.getUserEmail().equals(email))
+                .flatMapMany(session -> chatMessageRepository.findAllBySessionIdOrderByTimestampAsc(sessionId))
                 .map(ChatMessageDto::fromEntity);
     }
 
-    private Mono<ChatSession> getOrCreateSession(String sessionId, String firstMessage) {
+    private Mono<ChatSession> getOrCreateSession(String sessionId, String firstMessage, String userEmail) {
         if (sessionId != null && !sessionId.isEmpty()) {
             return chatSessionRepository.findById(sessionId);
         }
         
         String targetContext = firstMessage.length() > 30 ? firstMessage.substring(0, 30) : firstMessage;
         ChatSession newSession = ChatSession.builder()
-                .userId(TEST_USER_ID)
+                .userEmail(userEmail)
                 .target_context(targetContext)
                 .createdAt(LocalDateTime.now())
                 .build();

@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 public class ChatSession {
     @Id
     private String id;
-    private String userId; // Hardcoded: "user_test_01"
+    private String userEmail; 
     private String target_context;
     private LocalDateTime createdAt;
 }

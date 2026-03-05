@@ -6,6 +6,6 @@ import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
 import reactor.core.publisher.Flux;
 
 public interface ChatSessionRepository extends ReactiveMongoRepository<ChatSession, String> {
-    Flux<ChatSession> findAllByUserIdOrderByCreatedAtDesc(String userId, Pageable pageable);
-    Flux<ChatSession> findAllByUserIdOrderByCreatedAtDesc(String userId);
+    Flux<ChatSession> findAllByUserEmailOrderByCreatedAtDesc(String userEmail, Pageable pageable);
+    Flux<ChatSession> findAllByUserEmailOrderByCreatedAtDesc(String userEmail);
 }
