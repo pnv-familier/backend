@@ -8,10 +8,22 @@ spring:
             - Path=/ai/**
           filters:
             - AuthenticationFilter
+        - id: ai_service_public_route
+          uri: ${AI_SERVICE_URL}
+          predicates:
+            - Path=/ai/actuator/**
+          filters:
+            - RewritePath=/ai/(?<segment>.*), /$\{segment}
         - id: core_service_public_route
           uri: ${CORE_SERVICE_URL}
           predicates:
-            - Path=/api/v1/auth/**, /swagger-ui/**, /swagger-ui.html, /v3/api-docs/**, /actuator/**
+            - Path=/api/v1/auth/**, /swagger-ui/**, /swagger-ui.html, /v3/api-docs/**
+        - id: core_service_actuator_route
+          uri: ${CORE_SERVICE_URL}
+          predicates:
+            - Path=/core/actuator/**
+          filters:
+            - RewritePath=/core/(?<segment>.*), /$\{segment}
         - id: core_service_route
           uri: ${CORE_SERVICE_URL}
           predicates:
@@ -28,3 +40,9 @@ application:
 
 server:
   port: ${GATEWAY_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

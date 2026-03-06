@@ -59,9 +59,10 @@ public class SecurityConfig {
                     return config;
                 }))
                 .authorizeExchange(exchange -> exchange
-                        .pathMatchers("/api/v1/auth/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/**").permitAll()
+                        .pathMatchers("/api/v1/auth/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/**", "/ai/actuator/**", "/core/actuator/**").permitAll()
                         .anyExchange().authenticated()
                 )
+
                 .addFilterAt(authenticationWebFilter(), SecurityWebFiltersOrder.AUTHENTICATION)
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable);

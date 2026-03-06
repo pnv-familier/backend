@@ -7,7 +7,7 @@ import com.familier.ai.entity.Sender;
 import com.familier.ai.repository.ChatMessageRepository;
 import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.service.PromptService;
-import com.familier.ai.service.grpc.UserContextServiceClient;
+import com.familier.ai.service.provider.UserProvider;
 import com.familier.grpc.UserProfileResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -32,7 +32,7 @@ public class AiController {
     private final PromptService promptService;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
-    private final UserContextServiceClient userContextServiceClient;
+    private final UserProvider userProvider;
 
     @Value("${gemini.api-key}")
     private String API_KEY;
@@ -41,12 +41,12 @@ public class AiController {
                         PromptService promptService, 
                         ChatSessionRepository chatSessionRepository,
                         ChatMessageRepository chatMessageRepository,
-                        UserContextServiceClient userContextServiceClient) {
+                        UserProvider userProvider) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
         this.promptService = promptService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.userContextServiceClient = userContextServiceClient;
+        this.userProvider = userProvider;
     }
 
     @GetMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -55,7 +55,7 @@ public class AiController {
             @RequestParam(required = false) String sessionId,
             @RequestHeader(name = "X-User-Email") String email) throws Exception {
 
-        return userContextServiceClient.getUserProfile(email)
+        return userProvider.getUserProfile(email)
                 .flatMap(userProfile -> {
                     try {
                         String userContext = formatUserContext(userProfile);
