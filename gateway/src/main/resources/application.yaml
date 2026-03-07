@@ -1,6 +1,13 @@
 spring:
   cloud:
     gateway:
+
+      httpclient:
+        pool:
+          max-idle-time: 5s 
+          max-life-time: 10s
+        wiretap: true
+
       routes:
         - id: ai_service_public_route
           uri: ${AI_SERVICE_URL}
@@ -8,28 +15,49 @@ spring:
             - Path=/ai/actuator/**
           filters:
             - RewritePath=/ai/(?<segment>.*), /${segment}
+
         - id: ai_service_route
           uri: ${AI_SERVICE_URL}
           predicates:
             - Path=/ai/**
           filters:
             - AuthenticationFilter
+            - name: Retry
+              args:
+                retries: 1
+                methods: GET,POST
+                exceptions: reactor.netty.http.client.PrematureCloseException
+
         - id: core_service_actuator_route
           uri: ${CORE_SERVICE_URL}
           predicates:
             - Path=/core/actuator/**
           filters:
             - RewritePath=/core/(?<segment>.*), /${segment}
+
         - id: core_service_public_route
           uri: ${CORE_SERVICE_URL}
           predicates:
             - Path=/api/v1/auth/**, /swagger-ui/**, /swagger-ui.html, /v3/api-docs/**
+          filters:
+            - name: Retry
+              args:
+                retries: 1
+                methods: POST
+                exceptions: reactor.netty.http.client.PrematureCloseException
+
         - id: core_service_route
           uri: ${CORE_SERVICE_URL}
           predicates:
             - Path=/**
           filters:
             - AuthenticationFilter
+            - name: Retry
+              args:
+                retries: 1
+                series: SERVER_ERROR
+                methods: GET,POST
+                exceptions: reactor.netty.http.client.PrematureCloseException
 
 application:
   security:

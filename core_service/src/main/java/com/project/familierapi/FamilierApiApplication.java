@@ -4,7 +4,10 @@ import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = {
+        net.devh.boot.grpc.server.autoconfigure.GrpcServerAutoConfiguration.class,
+        net.devh.boot.grpc.server.autoconfigure.GrpcServerFactoryAutoConfiguration.class
+})
 public class FamilierApiApplication {
 
     public static void main(String[] args) {

@@ -1,4 +1,3 @@
-# ---- Build stage ----
 FROM maven:3.9.6-eclipse-temurin-21 AS builder
 WORKDIR /app
 
@@ -8,10 +7,11 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn clean package -DskipTests -Dmaven.test.skip=true
 
-# ---- Runtime stage ----
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-COPY --from=builder /app/target/app.jar app.jar
+RUN apk add --no-cache fontconfig ttf-dejavu
 
-ENTRYPOINT ["java", "-Xmx256m", "-Dserver.port=${PORT:8080}", "-jar", "app.jar"]
+COPY --from=builder /app/target/*.jar app.jar
+
+ENTRYPOINT java -Xmx300m -Xss512k -XX:+UseSerialGC -Dserver.port=${PORT} -jar app.jar

@@ -9,10 +9,12 @@ import io.grpc.stub.StreamObserver;
 import net.devh.boot.grpc.server.service.GrpcService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 
 @GrpcService
 @Slf4j
 @RequiredArgsConstructor
+@Profile("!prod")
 public class UserContextServiceImpl extends UserContextServiceGrpc.UserContextServiceImplBase {
 
     private final UserRepository userRepository;

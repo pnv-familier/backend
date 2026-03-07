@@ -82,7 +82,6 @@ public class SecurityConfig {
             if (jwtUtil.validateToken(token)) {
                 String username = jwtUtil.extractUsername(token);
                 if (username != null) {
-                    logger.info("Successfully authenticated user: {}", username);
                     return Mono.just(new UsernamePasswordAuthenticationToken(username, token, new ArrayList<>()));
                 }
                 logger.error("Authentication failed: Could not extract username from valid token");
