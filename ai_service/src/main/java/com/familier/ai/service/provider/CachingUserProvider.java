@@ -43,8 +43,7 @@ public class CachingUserProvider implements UserProvider {
                     }
                 })
                 .onErrorResume(e -> {
-                    System.err.println("Redis Error during lookup for " + email + ": " + e.getMessage());
-                    log.error("Redis lookup failed, bypassing cache: {}", e.getMessage());
+                    log.error("Redis lookup failed, bypassing cache for {}: {}", email, e.getMessage());
                     return Mono.empty();
                 })
                 .switchIfEmpty(
@@ -53,11 +52,12 @@ public class CachingUserProvider implements UserProvider {
                             log.info("Cache Miss for email: {}. Fetching from provider.", email);
                             try {
                                 String json = JsonFormat.printer().print(profile);
-                                return redisTemplate.opsForValue().set(key, json, Duration.ofMinutes(10))
+                                Duration ttl = "User".equalsIgnoreCase(profile.getFullName()) ? Duration.ofMinutes(1) : Duration.ofMinutes(10);
+                                
+                                return redisTemplate.opsForValue().set(key, json, ttl)
                                         .onErrorResume(e -> {
-                                            System.err.println("Redis Error during save for " + email + ": " + e.getMessage());
-                                            log.error("Failed to save to Redis cache: {}", e.getMessage());
-                                            return Mono.just(true); // Ignore save failure
+                                            log.error("Failed to save to Redis cache for {}: {}", email, e.getMessage());
+                                            return Mono.just(true);
                                         })
                                         .thenReturn(profile);
                             } catch (Exception e) {
