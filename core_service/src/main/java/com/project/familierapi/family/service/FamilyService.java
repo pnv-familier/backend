@@ -24,13 +24,15 @@ import java.util.stream.Collectors;
 public class FamilyService {
     private final FamilyRepository familyRepository;
     private final FamilyMemberRepository familyMemberRepository;
+    private final com.project.familierapi.schedule.service.HolidayInitializerService holidayInitializerService;
 
     private static final String LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private static final String NUMBERS = "0123456789";
 
-    public FamilyService(FamilyRepository familyRepository, FamilyMemberRepository familyMemberRepository, UserRepository userRepository) {
+    public FamilyService(FamilyRepository familyRepository, FamilyMemberRepository familyMemberRepository, UserRepository userRepository, com.project.familierapi.schedule.service.HolidayInitializerService holidayInitializerService) {
         this.familyRepository = familyRepository;
         this.familyMemberRepository = familyMemberRepository;
+        this.holidayInitializerService = holidayInitializerService;
     }
 
     @Transactional
@@ -58,6 +60,9 @@ public class FamilyService {
                 .nickname(user.getFullName())
                 .build();
         familyMemberRepository.save(familyMember);
+
+        // Initialize Vietnamese holidays for the new family
+        holidayInitializerService.initializeVietnameseHolidays2026(savedFamily);
 
         return savedFamily;
     }
