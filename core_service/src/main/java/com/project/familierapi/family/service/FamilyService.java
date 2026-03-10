@@ -4,9 +4,11 @@ import com.project.familierapi.auth.repository.UserRepository;
 import com.project.familierapi.family.domain.Family;
 import com.project.familierapi.family.domain.FamilyMember;
 import com.project.familierapi.family.domain.FamilyRole;
+import com.project.familierapi.family.domain.Relationship;
 import com.project.familierapi.family.dto.MyFamilyResponseDto;
 import com.project.familierapi.family.dto.FamilyMemberDto;
 import com.project.familierapi.family.dto.FamilyMemberListResponseDto;
+import com.project.familierapi.family.dto.FamilyPreviewDto;
 import com.project.familierapi.family.repository.FamilyMemberRepository;
 import com.project.familierapi.family.repository.FamilyRepository;
 import com.project.familierapi.family.exception.FamilyCreationException;
@@ -101,7 +103,7 @@ public class FamilyService {
     }
 
     @Transactional
-    public MyFamilyResponseDto joinFamily(String inviteCode, User user) {
+    public MyFamilyResponseDto joinFamily(String inviteCode, String relationshipStr, User user) {
         if (inviteCode == null || inviteCode.trim().isEmpty()) {
             throw new InvalidFamilyCodeException("Please enter a family code");
         }
@@ -115,11 +117,19 @@ public class FamilyService {
         Family family = familyRepository.findByInviteCode(cleanCode)
                 .orElseThrow(() -> new InvalidFamilyCodeException("Invalid code. Please check and try again"));
 
+        Relationship relationship;
+        try {
+            relationship = Relationship.valueOf(relationshipStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid relationship value");
+        }
+
         FamilyMember familyMember = FamilyMember.builder()
                 .family(family)
                 .user(user)
                 .role(FamilyRole.MEMBER)
                 .nickname(user.getFullName())
+                .relationship(relationship)
                 .build();
         familyMemberRepository.save(familyMember);
 
@@ -150,5 +160,28 @@ public class FamilyService {
                 .collect(Collectors.toList());
 
         return new FamilyMemberListResponseDto(memberDtos, members.size() == 1, currentUserMember.getFamily().getCreatedAt());
+    }
+
+    public FamilyPreviewDto getFamilyPreview(String inviteCode) {
+        if (inviteCode == null || inviteCode.trim().isEmpty()) {
+            throw new InvalidFamilyCodeException("Please enter a family code");
+        }
+
+        String cleanCode = inviteCode.replaceAll("\\s+", "").toUpperCase();
+        Family family = familyRepository.findByInviteCode(cleanCode)
+                .orElseThrow(() -> new InvalidFamilyCodeException("Invalid family code"));
+
+        List<FamilyMember> members = familyMemberRepository.findByFamilyIdOrderByJoinedAt(family.getId());
+        int memberCount = members.size();
+
+        return FamilyPreviewDto.builder()
+                .familyId(family.getId())
+                .familyName(family.getName())
+                .admin(FamilyPreviewDto.AdminInfo.builder()
+                        .fullName(family.getUser().getFullName())
+                        .avatarUrl(family.getUser().getAvatarUrl())
+                        .build())
+                .memberCount(memberCount)
+                .build();
     }
 }
