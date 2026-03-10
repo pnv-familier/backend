@@ -30,6 +30,10 @@ public class FamilyMember {
 
     private String nickname;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "relationship")
+    private Relationship relationship;
+
     @CreationTimestamp
     @Column(name = "joined_at", updatable = false)
     private LocalDateTime joinedAt;

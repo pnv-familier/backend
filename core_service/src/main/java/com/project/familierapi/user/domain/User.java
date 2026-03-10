@@ -57,6 +57,17 @@ public class User implements UserDetails {
     @Column(name = "is_setup")
     private boolean isSetup = false;
 
+    @Column(name = "date_of_birth")
+    private LocalDateTime dateOfBirth;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender")
+    private Gender gender;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "hobbies")
+    private List<String> hobbies;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "profile")
     private Map<String, Object> profile;
