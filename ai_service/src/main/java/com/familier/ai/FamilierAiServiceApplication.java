@@ -3,6 +3,7 @@ package com.familier.ai;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.mongodb.repository.config.EnableReactiveMongoRepositories;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import io.github.cdimascio.dotenv.Dotenv;
 
@@ -10,6 +11,7 @@ import io.github.cdimascio.dotenv.Dotenv;
 		net.devh.boot.grpc.client.autoconfigure.GrpcClientAutoConfiguration.class
 })
 @EnableReactiveMongoRepositories(basePackages = "com.familier.ai.repository")
+@EnableScheduling
 public class FamilierAiServiceApplication {
 
 	public static void main(String[] args) {
