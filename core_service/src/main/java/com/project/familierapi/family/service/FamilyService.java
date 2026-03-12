@@ -27,14 +27,16 @@ public class FamilyService {
     private final FamilyRepository familyRepository;
     private final FamilyMemberRepository familyMemberRepository;
     private final com.project.familierapi.schedule.service.HolidayInitializerService holidayInitializerService;
+    private final RelationshipInferenceService relationshipInferenceService;
 
     private static final String LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private static final String NUMBERS = "0123456789";
 
-    public FamilyService(FamilyRepository familyRepository, FamilyMemberRepository familyMemberRepository, UserRepository userRepository, com.project.familierapi.schedule.service.HolidayInitializerService holidayInitializerService) {
+    public FamilyService(FamilyRepository familyRepository, FamilyMemberRepository familyMemberRepository, UserRepository userRepository, com.project.familierapi.schedule.service.HolidayInitializerService holidayInitializerService, RelationshipInferenceService relationshipInferenceService) {
         this.familyRepository = familyRepository;
         this.familyMemberRepository = familyMemberRepository;
         this.holidayInitializerService = holidayInitializerService;
+        this.relationshipInferenceService = relationshipInferenceService;
     }
 
     @Transactional
@@ -132,6 +134,9 @@ public class FamilyService {
                 .relationship(relationship)
                 .build();
         familyMemberRepository.save(familyMember);
+
+        String adminId = family.getUser().getId();
+        relationshipInferenceService.generateFamilyNetwork(user.getId(), family.getId(), adminId, relationship);
 
         return new MyFamilyResponseDto(
                 family.getId(),
