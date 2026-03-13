@@ -74,4 +74,13 @@ public class FamilyController {
         SuccessResponse<FamilyPreviewDto> successResponse = new SuccessResponse<>("Family preview retrieved successfully", responseDto);
         return ResponseEntity.ok(successResponse);
     }
+
+    @GetMapping("/members-for-mention")
+    public ResponseEntity<SuccessResponse<com.project.familierapi.family.dto.FamilyMembersForMentionDto>> getMembersForMention(
+            @RequestHeader("X-User-Email") String userEmail) {
+        User user = userService.getUserByEmail(userEmail);
+        com.project.familierapi.family.dto.FamilyMembersForMentionDto responseDto = familyService.getMembersForMention(user);
+        SuccessResponse<com.project.familierapi.family.dto.FamilyMembersForMentionDto> successResponse = new SuccessResponse<>("Family members retrieved successfully", responseDto);
+        return ResponseEntity.ok(successResponse);
+    }
 }

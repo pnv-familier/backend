@@ -1,10 +1,10 @@
-name: CI Integration Health Check For Core Service
+name: CI Integration Health Check For Gateway Service
 
 on:
   pull_request:
     branches: [ "main", "dev" ]
     paths:
-      - 'core_service/**'
+      - 'gateway/**'
       - 'pom.xml'
 
 jobs:
@@ -13,23 +13,7 @@ jobs:
 
     defaults:
       run:
-          working-directory: core_service
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: testdb
-          MYSQL_USER: test
-          MYSQL_PASSWORD: test
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost -u test -ptest"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+          working-directory: gateway
 
     steps:
       - name: Checkout source
@@ -49,28 +33,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-m2-
 
-      - name: Wait for MySQL
-        run: |
-          for i in {1..30}; do
-            if mysql -h 127.0.0.1 -P 3306 -u test -ptest -e "SELECT 1" testdb; then
-              echo "MySQL is ready!"
-              break
-            fi
-            echo "Waiting for MySQL..."
-            sleep 5
-          done
-
       - name: Run Spring Boot app (skip tests)
         env:
-          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/testdb
-          SPRING_DATASOURCE_USERNAME: test
-          SPRING_DATASOURCE_PASSWORD: test
           SPRING_PROFILES_ACTIVE: dev
-          PUBLIC_GOOGLE_CLIENT_ID: this_is_a_fake_client_id_for_testing_purposes_only.apps.googleusercontent.com
-          CORE_SERVICE_PORT: 8080
-          CLOUDINARY_CLOUD_NAME: test_cloud
-          CLOUDINARY_API_KEY: test_api_key
-          CLOUDINARY_API_SECRET: test_api_secret
+          GATEWAY_PORT: 8080
 
         run: |
           nohup mvn spring-boot:run -DskipTests > app.log 2>&1 &

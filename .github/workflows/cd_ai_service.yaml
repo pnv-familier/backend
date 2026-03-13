@@ -1,10 +1,10 @@
-name: Build & Deploy Docker Image Core Service
+name: Build & Deploy Docker Image AI Service
 
 on:
   push:
     branches: [ "main", "dev" ]
     paths:
-      - 'core_service/**'
+      - 'ai_service/**'
 
 jobs:
   docker:
@@ -12,7 +12,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: core_service
+        working-directory: ai_service
 
     steps:
       - name: Checkout source
@@ -31,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/core_service
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/ai_service
           tags: |
             type=raw,value=latest
 
@@ -45,4 +45,4 @@ jobs:
       - name: Trigger Render Deploy Hook (main only)
         if: github.ref == 'refs/heads/main'
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL_AI_SERVICE }}"

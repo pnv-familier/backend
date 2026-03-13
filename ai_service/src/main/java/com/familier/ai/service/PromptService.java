@@ -30,6 +30,7 @@ public class PromptService {
                 content = content.replace(placeholder, entry.getValue());
             }
         }
+        System.out.println("This is a prompt after chat" + content);
         return content;
     }
 
