@@ -25,6 +25,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/posts/**").authenticated()
                         .requestMatchers("/api/v1/schedule/**", "/schedule/**").authenticated()
+                        .requestMatchers("/api/v1/love-tasks/**", "/api/love-tasks/**", "/love-tasks/**").authenticated()
                         .anyRequest().permitAll()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
