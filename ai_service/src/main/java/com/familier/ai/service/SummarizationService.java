@@ -36,6 +36,9 @@ public class SummarizationService {
     @Value("${gemini.api-key}")
     private String API_KEY;
 
+    @Value("${gemini.timeout:120}")
+    private long timeoutSeconds;
+
     public SummarizationService(WebClient.Builder webClientBuilder,
                                 ChatSessionRepository chatSessionRepository,
                                 ChatMessageRepository chatMessageRepository,
@@ -63,7 +66,6 @@ public class SummarizationService {
                                 }
                                 
                                 if (newMessages.size() < 3) {
-                                    log.debug("Session {} has too few messages to summarize, skipping", sessionId);
                                     return Mono.empty();
                                 }
 
@@ -106,6 +108,7 @@ public class SummarizationService {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                .timeout(java.time.Duration.ofSeconds(timeoutSeconds))
                 .map(this::extractTextFromResponse)
                 .flatMap(this::parseSummarizationResult)
                 .onErrorResume(e -> {
@@ -225,8 +228,6 @@ public class SummarizationService {
             for (UserContext.Fact existingFact : context.getFacts()) {
                 if (existingFact.getKey().equalsIgnoreCase(newFact.getKey())) {
                     if (newFact.getConfidence() >= existingFact.getConfidence() || newFact.getConfidence() > 0.7) {
-                        log.debug("Updating fact '{}': confidence {} -> {}", 
-                                existingFact.getKey(), existingFact.getConfidence(), newFact.getConfidence());
                         existingFact.setValue(newFact.getValue());
                         existingFact.setConfidence(newFact.getConfidence());
                         existingFact.setUpdatedAt(LocalDateTime.now());
@@ -238,7 +239,6 @@ public class SummarizationService {
                 }
             }
             if (!found) {
-                log.debug("Adding new fact '{}' with confidence {}", newFact.getKey(), newFact.getConfidence());
                 newFact.setUpdatedAt(LocalDateTime.now());
                 context.getFacts().add(newFact);
             }

@@ -189,4 +189,23 @@ public class FamilyService {
                 .memberCount(memberCount)
                 .build();
     }
+
+    public com.project.familierapi.family.dto.FamilyMembersForMentionDto getMembersForMention(User user) {
+        FamilyMember currentUserMember = familyMemberRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new NoSuchElementException("User is not part of any family."));
+
+        List<FamilyMember> members = familyMemberRepository.findByFamilyIdOrderByJoinedAt(currentUserMember.getFamily().getId());
+        
+        List<com.project.familierapi.family.dto.FamilyMembersForMentionDto.MemberInfo> memberInfos = members.stream()
+                .filter(member -> !member.getUser().getId().equals(user.getId())) // Exclude current user
+                .map(member -> com.project.familierapi.family.dto.FamilyMembersForMentionDto.MemberInfo.builder()
+                        .email(member.getUser().getEmail())
+                        .fullName(member.getUser().getFullName())
+                        .build())
+                .collect(Collectors.toList());
+
+        return com.project.familierapi.family.dto.FamilyMembersForMentionDto.builder()
+                .members(memberInfos)
+                .build();
+    }
 }

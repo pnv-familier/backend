@@ -26,6 +26,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/posts/**").authenticated()
                         .requestMatchers("/api/v1/schedule/**", "/schedule/**").authenticated()
                         .requestMatchers("/api/v1/love-tasks/**", "/api/love-tasks/**", "/love-tasks/**").authenticated()
+                        .requestMatchers("/ai/**").permitAll()
                         .anyRequest().permitAll()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
