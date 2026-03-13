@@ -1,10 +1,10 @@
-name: CI Integration Health Check For Core Service
+name: CI Integration Health Check For AI Service
 
 on:
   pull_request:
     branches: [ "main", "dev" ]
     paths:
-      - 'core_service/**'
+      - 'ai_service/**'
       - 'pom.xml'
 
 jobs:
@@ -13,20 +13,24 @@ jobs:
 
     defaults:
       run:
-          working-directory: core_service
+          working-directory: ai_service
 
     services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: testdb
-          MYSQL_USER: test
-          MYSQL_PASSWORD: test
+      mongo:
+        image: mongo:7.0
         ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost -u test -ptest"
+          - 27017:27017
+        options: >
+          --health-cmd="mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7.0
+        ports:
+          - 6379:6379
+        options: >
+          --health-cmd="redis-cli ping"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -49,28 +53,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-m2-
 
-      - name: Wait for MySQL
-        run: |
-          for i in {1..30}; do
-            if mysql -h 127.0.0.1 -P 3306 -u test -ptest -e "SELECT 1" testdb; then
-              echo "MySQL is ready!"
-              break
-            fi
-            echo "Waiting for MySQL..."
-            sleep 5
-          done
-
       - name: Run Spring Boot app (skip tests)
         env:
-          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/testdb
-          SPRING_DATASOURCE_USERNAME: test
-          SPRING_DATASOURCE_PASSWORD: test
           SPRING_PROFILES_ACTIVE: dev
-          PUBLIC_GOOGLE_CLIENT_ID: this_is_a_fake_client_id_for_testing_purposes_only.apps.googleusercontent.com
-          CORE_SERVICE_PORT: 8080
-          CLOUDINARY_CLOUD_NAME: test_cloud
-          CLOUDINARY_API_KEY: test_api_key
-          CLOUDINARY_API_SECRET: test_api_secret
+          AI_SERVICE_PORT: 8080
+          GEMINI_API_KEY: test_gemini_key
+          MONGODB_URI: mongodb://localhost:27017/ai_service_test
+          SPRING_DATA_REDIS_HOST: localhost
+          SPRING_DATA_REDIS_PORT: 6379
+          CORE_SERVICE_URL: http://localhost:8081
+          INTERNAL_SHARED_SECRET: test_secret
+          GRPC_USER_CONTEXT_ADDRESS: static://localhost:9090
 
         run: |
           nohup mvn spring-boot:run -DskipTests > app.log 2>&1 &
@@ -83,11 +76,13 @@ jobs:
               echo "App is UP!"
               exit 0
             fi
-            echo "Waiting for app..."
+            echo "Waiting for app... (attempt $i/30)"
             sleep 5
           done
           echo "App did not become healthy in time"
+          echo "=== Full Application Log ==="
           cat app.log
+          echo "=== End of Log ==="
           exit 1
 
       - name: Stop application
