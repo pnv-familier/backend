@@ -40,7 +40,8 @@ public class LoveTaskService {
                 .sender(sender)
                 .assignee(assignee)
                 .title(request.getTitle())
-                .description(request.getDescription() != null ? request.getDescription() : request.getLoveMessage())
+                .description(request.getDescription())
+                .loveMessage(request.getLoveMessage())
                 .status(TaskStatus.PENDING)
                 .build();
 
@@ -164,6 +165,7 @@ public class LoveTaskService {
                 .taskId(task.getTaskId())
                 .title(task.getTitle())
                 .description(task.getDescription())
+                .loveMessage(task.getLoveMessage())
                 .status(task.getStatus())
                 .sender(LoveTaskResponse.UserInfo.builder()
                         .userId(task.getSender().getId())

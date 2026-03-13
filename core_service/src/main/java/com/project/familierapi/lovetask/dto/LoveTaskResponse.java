@@ -16,6 +16,7 @@ public class LoveTaskResponse {
     private Integer taskId;
     private String title;
     private String description;
+    private String loveMessage;
     private TaskStatus status;
     private UserInfo sender;
     private UserInfo assignee;
