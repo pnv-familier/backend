@@ -40,6 +40,9 @@ public class LoveTask {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "love_message", columnDefinition = "TEXT")
+    private String loveMessage;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TaskStatus status;
