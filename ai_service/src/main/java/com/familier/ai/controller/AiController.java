@@ -10,8 +10,6 @@ import com.familier.ai.service.ContextManagerService;
 import com.familier.ai.service.GeminiService;
 import com.familier.ai.service.PromptService;
 import com.familier.ai.service.SummarizationScheduler;
-import com.familier.ai.service.SummarizationService;
-import com.familier.ai.service.provider.UserProvider;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @RestController
 @RequestMapping("/ai")
@@ -31,7 +29,7 @@ public class AiController {
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ContextManagerService contextManagerService;
-    private final SummarizationScheduler summarizationService;
+    private final SummarizationScheduler summarizationScheduler;
 
     public AiController(GeminiService geminiService,
                         PromptService promptService, 
@@ -43,7 +41,7 @@ public class AiController {
         this.promptService = promptService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.summarizationService = summarizationScheduler;
+        this.summarizationScheduler = summarizationScheduler;
         this.contextManagerService = contextManagerService;
     }
 
@@ -74,7 +72,7 @@ public class AiController {
                 .sessionId(sessionId)
                 .sender(Sender.USER)
                 .content(content)
-                .timestamp(LocalDateTime.now())
+                .timestamp(Instant.now())
                 .build();
         return chatMessageRepository.save(userMessage)
                 .flatMap(msg -> updateSessionLastUpdate(sessionId).thenReturn(msg));
@@ -83,7 +81,7 @@ public class AiController {
     private Mono<Void> updateSessionLastUpdate(String sessionId) {
         return chatSessionRepository.findById(sessionId)
                 .flatMap(session -> {
-                    session.setLastUpdate(LocalDateTime.now());
+                    session.setLastUpdate(Instant.now());
                     if ("COMPLETED".equals(session.getStatus())) {
                         session.setStatus("ACTIVE");
                     }
@@ -118,7 +116,7 @@ public class AiController {
                 .sessionId(sessionId)
                 .sender(Sender.AI)
                 .content(fullContent)
-                .timestamp(LocalDateTime.now())
+                .timestamp(Instant.now())
                 .build();
         chatMessageRepository.save(aiMessage)
                 .flatMap(msg -> updateSessionLastUpdate(sessionId).thenReturn(msg))
@@ -143,10 +141,15 @@ public class AiController {
                 .map(ChatMessageDto::fromEntity);
     }
 
-    @PostMapping("/sessions/summarize")
-    public Mono<ResponseEntity<Void>> summarizeSession() {
-        summarizationService.summarizeOldActiveSessions();
-        return Mono.just(ResponseEntity.ok().build());
+    @PostMapping("/sessions/{sessionId}/summarize")
+    public Mono<ResponseEntity<Void>> summarizeSession(
+            @PathVariable String sessionId,
+            @RequestHeader(name = "X-User-Email") String email) {
+        return chatSessionRepository.findById(sessionId)
+                .filter(session -> session.getUserEmail().equals(email))
+                .flatMap(session -> Mono.fromRunnable(() -> summarizationScheduler.summarizeOldActiveSessions()))
+                .then(Mono.just(ResponseEntity.ok().<Void>build()))
+                .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
     private Mono<ChatSession> getOrCreateSession(String sessionId, String firstMessage, String userEmail) {
@@ -158,10 +161,10 @@ public class AiController {
         ChatSession newSession = ChatSession.builder()
                 .userEmail(userEmail)
                 .targetContext(targetContext)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .status("ACTIVE")
-                .lastUpdate(LocalDateTime.now())
-                .lastSummarizedAt(LocalDateTime.now())
+                .lastUpdate(Instant.now())
+                .lastSummarizedAt(Instant.now())
                 .build();
         return chatSessionRepository.save(newSession);
     }

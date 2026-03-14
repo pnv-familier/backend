@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Service
 @Slf4j
@@ -28,7 +28,7 @@ public class SummarizationScheduler {
     public void summarizeOldActiveSessions() {
         log.info("Starting scheduled summarization task");
         
-        LocalDateTime duration = LocalDateTime.now().minusMinutes(17);
+        Instant duration = Instant.now().minusSeconds(17 * 60);
 
         chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", 
                 duration)

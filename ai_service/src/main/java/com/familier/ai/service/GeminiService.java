@@ -29,12 +29,6 @@ public class GeminiService {
     @Value("${gemini.timeout:120}")
     private long timeoutSeconds;
 
-    @Value("${gemini.retry-attempts:4}")
-    private long retryAttempts;
-
-    @Value("${gemini.retry-delay:3}")
-    private long retryDelaySeconds;
-
     public GeminiService(WebClient.Builder webClientBuilder) {
         this.webClient = webClientBuilder
                 .baseUrl("https://generativelanguage.googleapis.com")
@@ -65,10 +59,6 @@ public class GeminiService {
                 )
                 .bodyToFlux(new ParameterizedTypeReference<Map<String, Object>>() {})
                 .timeout(Duration.ofSeconds(timeoutSeconds))
-                .retryWhen(reactor.util.retry.Retry.backoff(retryAttempts, Duration.ofSeconds(retryDelaySeconds))
-                        .maxBackoff(Duration.ofSeconds(retryDelaySeconds * 4))
-                        .filter(throwable -> isRetryable(throwable))
-                )
                 .<ServerSentEvent<String>>map(response -> {
                     String text = extractTextFromResponse(response);
                     return ServerSentEvent.<String>builder()
@@ -77,18 +67,6 @@ public class GeminiService {
                 })
                 .doOnError(e -> log.error("Error in Gemini stream: {}", e.getMessage()))
                 .concatWith(Flux.just(ServerSentEvent.<String>builder().data("[DONE.]").build()));
-    }
-
-    private boolean isRetryable(Throwable throwable) {
-        if (throwable instanceof WebClientResponseException) {
-            WebClientResponseException ex = (WebClientResponseException) throwable;
-            return ex.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS ||
-                    ex.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE ||
-                    ex.getStatusCode() == HttpStatus.GATEWAY_TIMEOUT;
-        }
-        return throwable instanceof java.util.concurrent.TimeoutException ||
-                throwable instanceof io.netty.handler.timeout.ReadTimeoutException ||
-                throwable instanceof java.net.ConnectException;
     }
 
     public Flux<ServerSentEvent<String>> fallbackStreamResponse(String systemPrompt, String message, Exception ex) {

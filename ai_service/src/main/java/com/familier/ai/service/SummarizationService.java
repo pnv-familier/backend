@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +60,7 @@ public class SummarizationService {
                 .flatMap(userProfile -> chatSessionRepository.findById(sessionId)
                         .flatMap(session -> {
                             String currentSummary = session.getSummary() != null ? session.getSummary() : "";
-                            LocalDateTime lastSummarized = session.getLastSummarizedAt() != null ? 
+                            Instant lastSummarized = session.getLastSummarizedAt() != null ? 
                                     session.getLastSummarizedAt() : session.getCreatedAt();
 
                             return chatMessageRepository.findAllBySessionIdOrderByTimestampAsc(sessionId)
@@ -171,7 +171,7 @@ public class SummarizationService {
                                 .key(key)
                                 .value(value)
                                 .confidence(confidence)
-                                .updatedAt(LocalDateTime.now())
+                                .updatedAt(Instant.now())
                                 .build();
                         facts.add(fact);
                     }
@@ -224,8 +224,8 @@ public class SummarizationService {
     private Mono<Void> updateSessionAndContext(ChatSession session, String summary, String userEmail, List<UserContext.Fact> facts) {
         session.setSummary(summary);
         session.setStatus("COMPLETED");
-        session.setLastUpdate(LocalDateTime.now());
-        session.setLastSummarizedAt(LocalDateTime.now());
+        session.setLastUpdate(Instant.now());
+        session.setLastSummarizedAt(Instant.now());
 
         return chatSessionRepository.save(session)
                 .flatMap(savedSession -> userContextRepository.findByEmail(userEmail)
@@ -255,16 +255,16 @@ public class SummarizationService {
                     if (newFact.getConfidence() >= existingFact.getConfidence() || newFact.getConfidence() > 0.7) {
                         existingFact.setValue(newFact.getValue());
                         existingFact.setConfidence(newFact.getConfidence());
-                        existingFact.setUpdatedAt(LocalDateTime.now());
+                        existingFact.setUpdatedAt(Instant.now());
                     } else {
-                        existingFact.setUpdatedAt(LocalDateTime.now());
+                        existingFact.setUpdatedAt(Instant.now());
                     }
                     found = true;
                     break;
                 }
             }
             if (!found) {
-                newFact.setUpdatedAt(LocalDateTime.now());
+                newFact.setUpdatedAt(Instant.now());
                 context.getFacts().add(newFact);
             }
         }
