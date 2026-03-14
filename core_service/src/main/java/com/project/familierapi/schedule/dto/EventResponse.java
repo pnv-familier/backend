@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -20,6 +21,7 @@ public class EventResponse {
     private String location;
     private CreatorInfo creator;
     private LocalDateTime createdAt;
+    private List<String> participantIds;
 
     @Data
     @Builder

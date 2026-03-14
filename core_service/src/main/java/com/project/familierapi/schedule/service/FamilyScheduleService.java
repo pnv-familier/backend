@@ -1,7 +1,9 @@
 package com.project.familierapi.schedule.service;
 
+import com.project.familierapi.auth.repository.UserRepository;
 import com.project.familierapi.family.domain.Family;
 import com.project.familierapi.family.domain.FamilyMember;
+import com.project.familierapi.schedule.domain.EventParticipant;
 import com.project.familierapi.schedule.domain.FamilyEvent;
 import com.project.familierapi.schedule.dto.CalendarResponse;
 import com.project.familierapi.schedule.dto.CreateEventRequest;
@@ -21,6 +23,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FamilyScheduleService {
     private final FamilyEventRepository eventRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public EventResponse createEvent(User user, CreateEventRequest request) {
@@ -42,6 +45,17 @@ public class FamilyScheduleService {
                 .build();
 
         FamilyEvent savedEvent = eventRepository.save(event);
+
+        if (request.getParticipantIds() != null && !request.getParticipantIds().isEmpty()) {
+            List<EventParticipant> participants = request.getParticipantIds().stream()
+                    .map(userId -> userRepository.findById(userId).orElse(null))
+                    .filter(u -> u != null)
+                    .map(u -> EventParticipant.builder().event(savedEvent).user(u).build())
+                    .collect(Collectors.toList());
+            savedEvent.setParticipants(participants);
+            eventRepository.save(savedEvent);
+        }
+
         return mapToEventResponse(savedEvent);
     }
 
@@ -108,6 +122,16 @@ public class FamilyScheduleService {
         event.setEndTime(request.getEndTime());
         event.setLocation(request.getLocation());
 
+        if (request.getParticipantIds() != null) {
+            event.getParticipants().clear();
+            List<EventParticipant> participants = request.getParticipantIds().stream()
+                    .map(userId -> userRepository.findById(userId).orElse(null))
+                    .filter(u -> u != null)
+                    .map(u -> EventParticipant.builder().event(event).user(u).build())
+                    .collect(Collectors.toList());
+            event.getParticipants().addAll(participants);
+        }
+
         FamilyEvent updatedEvent = eventRepository.save(event);
         return mapToEventResponse(updatedEvent);
     }
@@ -139,6 +163,9 @@ public class FamilyScheduleService {
                         .avatarUrl(event.getCreator().getAvatarUrl())
                         .build())
                 .createdAt(event.getCreatedAt())
+                .participantIds(event.getParticipants() != null
+                        ? event.getParticipants().stream().map(p -> p.getUser().getId()).collect(Collectors.toList())
+                        : List.of())
                 .build();
     }
 }

@@ -8,6 +8,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "family_events")
@@ -43,6 +44,9 @@ public class FamilyEvent {
     private LocalDateTime endTime;
 
     private String location;
+
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    private List<EventParticipant> participants;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
