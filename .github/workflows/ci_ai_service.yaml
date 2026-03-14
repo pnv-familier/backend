@@ -64,7 +64,6 @@ jobs:
           SPRING_DATA_REDIS_PORT: 6379
           CORE_SERVICE_URL: http://localhost:8081
           INTERNAL_SHARED_SECRET: test_secret
-          GRPC_USER_CONTEXT_ADDRESS: static://localhost:9090
 
         run: |
           nohup mvn spring-boot:run -DskipTests > app.log 2>&1 &
