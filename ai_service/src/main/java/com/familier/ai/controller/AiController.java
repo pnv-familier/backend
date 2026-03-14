@@ -29,7 +29,6 @@ public class AiController {
     private final PromptService promptService;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
-    private final UserProvider userProvider;
     private final SummarizationService summarizationService;
     private final ContextManagerService contextManagerService;
 
@@ -37,14 +36,12 @@ public class AiController {
                         PromptService promptService, 
                         ChatSessionRepository chatSessionRepository,
                         ChatMessageRepository chatMessageRepository,
-                        UserProvider userProvider,
                         SummarizationService summarizationService,
                         ContextManagerService contextManagerService) {
         this.geminiService = geminiService;
         this.promptService = promptService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.userProvider = userProvider;
         this.summarizationService = summarizationService;
         this.contextManagerService = contextManagerService;
     }
@@ -56,20 +53,19 @@ public class AiController {
             @RequestParam(required = false) String taggedUserEmail,
             @RequestHeader(name = "X-User-Email") String email) throws Exception {
 
-        return userProvider.getUserProfile(email)
-                .flatMap(userProfile -> getOrCreateSession(sessionId, message, email)
-                        .flatMap(session -> contextManagerService.buildVariables(email, session.getId(), userProfile, message, taggedUserEmail)
-                                .flatMap(variables -> {
-                                    try {
-                                        String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v3", variables);
-                                        return Mono.just(ResponseEntity.ok()
-                                                .header("X-Session-Id", session.getId())
-                                                .body(saveUserMessage(session.getId(), message)
-                                                        .flatMapMany(savedMsg -> executeAiStream(session.getId(), message, enrichedPrompt))));
-                                    } catch (Exception e) {
-                                        return Mono.error(e);
-                                    }
-                                })));
+        return getOrCreateSession(sessionId, message, email)
+                .flatMap(session -> contextManagerService.buildVariables(email, session.getId(), message, taggedUserEmail)
+                        .flatMap(variables -> {
+                            try {
+                                String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v3", variables);
+                                return Mono.just(ResponseEntity.ok()
+                                        .header("X-Session-Id", session.getId())
+                                        .body(saveUserMessage(session.getId(), message)
+                                                .flatMapMany(savedMsg -> executeAiStream(session.getId(), message, enrichedPrompt))));
+                            } catch (Exception e) {
+                                return Mono.error(e);
+                            }
+                        }));
     }
 
     private Mono<ChatMessage> saveUserMessage(String sessionId, String content) {

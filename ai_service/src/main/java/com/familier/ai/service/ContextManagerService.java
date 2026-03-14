@@ -1,12 +1,11 @@
 package com.familier.ai.service;
 
-import com.familier.ai.dto.MentionDetectionResult;
 import com.familier.ai.dto.TargetProfileWithRelation;
-import com.familier.ai.entity.ChatSession;
 import com.familier.ai.entity.UserContext;
 import com.familier.ai.repository.ChatMessageRepository;
 import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.repository.UserContextRepository;
+import com.familier.ai.service.provider.UserProvider;
 import com.familier.grpc.UserProfileResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +27,7 @@ public class ContextManagerService {
     private final MentionDetectionService mentionDetectionService;
     private final TargetProfileService targetProfileService;
     private final RelationMappingService relationMappingService;
-    private final UserProfileService userProfileService;
+    private final UserProvider userProvider;
     private final ObjectMapper objectMapper;
 
     public ContextManagerService(UserContextRepository userContextRepository,
@@ -37,7 +36,7 @@ public class ContextManagerService {
                                  MentionDetectionService mentionDetectionService,
                                  TargetProfileService targetProfileService,
                                  RelationMappingService relationMappingService,
-                                 UserProfileService userProfileService,
+                                 UserProvider userProvider,
                                  ObjectMapper objectMapper) {
         this.userContextRepository = userContextRepository;
         this.chatSessionRepository = chatSessionRepository;
@@ -45,24 +44,25 @@ public class ContextManagerService {
         this.mentionDetectionService = mentionDetectionService;
         this.targetProfileService = targetProfileService;
         this.relationMappingService = relationMappingService;
-        this.userProfileService = userProfileService;
+        this.userProvider = userProvider;
         this.objectMapper = objectMapper;
     }
 
-    public Mono<Map<String, String>> buildVariables(String email, String sessionId, UserProfileResponse userProfile, String message, String taggedUserEmail) {
+    public Mono<Map<String, String>> buildVariables(String email, String sessionId, String message, String taggedUserEmail) {
         return Mono.zip(
-                getUserProfileFromCore(email),
+                userProvider.getUserProfile(email),
                 getUserContext(email),
                 getSessionSummary(sessionId),
                 getRecentMessages(sessionId, 5),
                 resolveTargetUser(email, message, taggedUserEmail)
         ).flatMap(tuple -> {
-            Map<String, Object> currentUserProfile = tuple.getT1();
+            UserProfileResponse userProfile = tuple.getT1();
             UserContext userContext = tuple.getT2();
             String summary = tuple.getT3();
             String recentMessages = tuple.getT4();
             TargetUserResolution targetResolution = tuple.getT5();
             
+            Map<String, Object> currentUserProfile = convertUserProfileResponseToMap(userProfile);
             Map<String, String> variables = new HashMap<>();
             
             String userContextValue = formatCurrentUserContext(currentUserProfile);
@@ -96,12 +96,14 @@ public class ContextManagerService {
         });
     }
 
-    private Mono<Map<String, Object>> getUserProfileFromCore(String email) {
-        return userProfileService.getUserProfile(email)
-                .onErrorResume(e -> {
-                    log.error("Failed to fetch user profile from Core Service for {}: {}", email, e.getMessage());
-                    return Mono.just(Map.of("email", email, "fullName", "N/A", "hobbies", "[]"));
-                });
+    private Map<String, Object> convertUserProfileResponseToMap(UserProfileResponse userProfile) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("email", userProfile.getEmail());
+        map.put("fullName", userProfile.getFullName());
+        map.put("hobbies", userProfile.getHobbiesJson());
+        map.put("birthday", userProfile.getBirthday());
+        map.put("gender", userProfile.getGender());
+        return map;
     }
 
     private Mono<TargetUserResolution> resolveTargetUser(String currentUserEmail, String message, String taggedUserEmail) {
@@ -177,6 +179,8 @@ public class ContextManagerService {
         StringBuilder sb = new StringBuilder();
         sb.append("Email: ").append(profile.getOrDefault("email", "N/A")).append("\n");
         sb.append("Full Name: ").append(profile.getOrDefault("fullName", "N/A")).append("\n");
+        sb.append("Birthday: ").append(profile.getOrDefault("birthday", "N/A")).append("\n");
+        sb.append("Gender: ").append(profile.getOrDefault("gender", "N/A")).append("\n");
         String hobbiesFormatted = parseAndFormatHobbies((String) profile.get("hobbies"));
         sb.append("Sở thích: \n").append(hobbiesFormatted);
         return sb.toString();

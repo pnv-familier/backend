@@ -28,11 +28,15 @@ public class UserContextServiceImpl extends UserContextServiceGrpc.UserContextSe
         userRepository.findByEmail(email).ifPresentOrElse(
             user -> {
                 try {
-                    String profileJson = user.getProfile() != null ? objectMapper.writeValueAsString(user.getProfile()) : "{}";
+                    String hobbiesJson = user.getHobbies() != null ? objectMapper.writeValueAsString(user.getHobbies()) : "[]";
+                    String birthday = user.getDateOfBirth() != null ? user.getDateOfBirth().toLocalDate().toString() : "";
+                    String gender = user.getGender() != null ? user.getGender().name() : "";
                     UserProfileResponse response = UserProfileResponse.newBuilder()
                             .setEmail(user.getEmail())
                             .setFullName(user.getFullName() != null ? user.getFullName() : "")
-                            .setProfileJson(profileJson)
+                            .setHobbiesJson(hobbiesJson)
+                            .setBirthday(birthday)
+                            .setGender(gender)
                             .build();
                     responseObserver.onNext(response);
                     responseObserver.onCompleted();

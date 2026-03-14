@@ -34,7 +34,9 @@ public class GrpcUserProvider implements UserProvider {
             return Mono.just(UserProfileResponse.newBuilder()
                     .setEmail(email)
                     .setFullName("User")
-                    .setProfileJson("{}")
+                    .setHobbiesJson("[]")
+                    .setBirthday("")
+                    .setGender("")
                     .build());
         });
     }

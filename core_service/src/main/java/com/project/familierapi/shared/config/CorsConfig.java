@@ -14,8 +14,9 @@ public class CorsConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins("*", "https://servermonitor-pi.vercel.app")
-                        .allowedMethods("GET", "OPTIONS")
+                        .allowedOriginPatterns("*")
+                        .allowedOrigins("https://servermonitor-pi.vercel.app")
+                        .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                         .allowedHeaders("*")
                         .maxAge(3600);
             }

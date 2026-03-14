@@ -42,6 +42,8 @@ public class AiUserProfileController {
                     } catch (Exception e) {
                         response.put("hobbies", "[]");
                     }
+                    response.put("birthday", user.getDateOfBirth() != null ? user.getDateOfBirth().toLocalDate().toString() : "");
+                    response.put("gender", user.getGender() != null ? user.getGender().name() : "");
                     return ResponseEntity.ok(response);
                 })
                 .orElse(ResponseEntity.notFound().build());
