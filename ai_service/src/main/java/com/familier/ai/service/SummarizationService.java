@@ -6,6 +6,8 @@ import com.familier.ai.entity.UserContext;
 import com.familier.ai.repository.ChatMessageRepository;
 import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.repository.UserContextRepository;
+import com.familier.ai.service.provider.UserProvider;
+import com.familier.grpc.UserProfileResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ public class SummarizationService {
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final UserContextRepository userContextRepository;
+    private final UserProvider userProvider;
     private final ObjectMapper objectMapper;
     private static final Pattern JSON_PATTERN = Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}");
 
@@ -42,39 +45,42 @@ public class SummarizationService {
     public SummarizationService(WebClient.Builder webClientBuilder,
                                 ChatSessionRepository chatSessionRepository,
                                 ChatMessageRepository chatMessageRepository,
-                                UserContextRepository userContextRepository) {
+                                UserContextRepository userContextRepository,
+                                UserProvider userProvider) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.userContextRepository = userContextRepository;
+        this.userProvider = userProvider;
         this.objectMapper = new ObjectMapper();
     }
 
     public Mono<Void> summarizeSession(String sessionId, String userEmail) {
-        return chatSessionRepository.findById(sessionId)
-                .flatMap(session -> {
-                    String currentSummary = session.getSummary() != null ? session.getSummary() : "";
-                    LocalDateTime lastSummarized = session.getLastSummarizedAt() != null ? 
-                            session.getLastSummarizedAt() : session.getCreatedAt();
+        return userProvider.getUserProfile(userEmail)
+                .flatMap(userProfile -> chatSessionRepository.findById(sessionId)
+                        .flatMap(session -> {
+                            String currentSummary = session.getSummary() != null ? session.getSummary() : "";
+                            LocalDateTime lastSummarized = session.getLastSummarizedAt() != null ? 
+                                    session.getLastSummarizedAt() : session.getCreatedAt();
 
-                    return chatMessageRepository.findAllBySessionIdOrderByTimestampAsc(sessionId)
-                            .filter(msg -> msg.getTimestamp().isAfter(lastSummarized))
-                            .collectList()
-                            .flatMap(newMessages -> {
-                                if (newMessages.isEmpty()) {
-                                    return Mono.empty();
-                                }
-                                
-                                if (newMessages.size() < 3) {
-                                    return Mono.empty();
-                                }
+                            return chatMessageRepository.findAllBySessionIdOrderByTimestampAsc(sessionId)
+                                    .filter(msg -> msg.getTimestamp().isAfter(lastSummarized))
+                                    .collectList()
+                                    .flatMap(newMessages -> {
+                                        if (newMessages.isEmpty()) {
+                                            return Mono.empty();
+                                        }
+                                        
+                                        if (newMessages.size() < 3) {
+                                            return Mono.empty();
+                                        }
 
-                                String newMessagesText = formatConversation(newMessages);
+                                        String newMessagesText = formatConversation(newMessages);
 
-                                return callGeminiForSummarization(currentSummary, newMessagesText)
-                                        .flatMap(result -> updateSessionWithSummary(session, result, userEmail));
-                            });
-                })
+                                        return callGeminiForSummarization(currentSummary, newMessagesText, userProfile)
+                                                .flatMap(result -> updateSessionWithSummary(session, result, userEmail));
+                                    });
+                        }))
                 .then();
     }
 
@@ -86,18 +92,28 @@ public class SummarizationService {
         return sb.toString();
     }
 
-    private Mono<SummarizationResult> callGeminiForSummarization(String oldSummary, String newMessages) {
+    private Mono<SummarizationResult> callGeminiForSummarization(String oldSummary, String newMessages, UserProfileResponse userProfile) {
+        String profileInfo = formatProfileInfo(userProfile);
         String prompt = String.format(
-                "Dựa trên tóm tắt cũ: [%s] và các tin nhắn mới sau: [%s]. " +
-                "Hãy trả về một JSON duy nhất gồm:\n" +
+                "Bạn đang phân tích một cuộc trò chuyện cho người dùng: %s\n\n" +
+                "THÔNG TIN HỒ SƠ (KHÔNG TRÍCH XUẤT CÁI NÀY):\n%s\n\n" +
+                "TÓM TẮT CŨ:\n%s\n\n" +
+                "TIN NHẮN MỚI:\n%s\n\n" +
+                "NHIỆM VỤ: Chỉ trích xuất các SỰ KIỆN CÁ NHÂN MỚI về %s từ cuộc trò chuyện mà KHÔNG có trong hồ sơ của họ.\n" +
+                "KHÔNG trích xuất hoặc đề cập: fullName, email, birthday, gender (những cái này đã có trong hồ sơ).\n" +
+                "Chỉ trích xuất những hiểu biết và sự kiện được rút ra từ cuộc trò chuyện về người dùng cụ thể này.\n\n" +
+                "Trả về một JSON với:\n" +
                 "{\n" +
-                "  \"newSummary\": \"Bản tóm tắt mới bao quát toàn bộ hội thoại từ đầu đến giờ.\",\n" +
+                "  \"newSummary\": \"Tóm tắt cuộc trò chuyện được cập nhật\",\n" +
                 "  \"extractedFacts\": [\n" +
-                "    {\"key\": \"tên thông tin\", \"value\": \"giá trị\", \"confidence\": 0.8}\n" +
+                "    {\"key\": \"tên sự kiện\", \"value\": \"giá trị sự kiện\", \"confidence\": 0.8}\n" +
                 "  ]\n" +
                 "}",
-                oldSummary.isEmpty() ? "Không có tóm tắt cũ" : oldSummary,
-                newMessages
+                userProfile.getEmail(),
+                profileInfo,
+                oldSummary.isEmpty() ? "Không có tóm tắt trước đó" : oldSummary,
+                newMessages,
+                userProfile.getFullName()
         );
 
         Map<String, Object> body = Map.of(
@@ -115,6 +131,15 @@ public class SummarizationService {
                     log.error("Failed to call Gemini for summarization: {}", e.getMessage());
                     return Mono.just(new SummarizationResult("", List.of()));
                 });
+    }
+
+    private String formatProfileInfo(UserProfileResponse userProfile) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Email: ").append(userProfile.getEmail()).append("\n");
+        sb.append("Full Name: ").append(userProfile.getFullName()).append("\n");
+        sb.append("Birthday: ").append(userProfile.getBirthday()).append("\n");
+        sb.append("Gender: ").append(userProfile.getGender()).append("\n");
+        return sb.toString();
     }
 
     private Mono<SummarizationResult> parseSummarizationResult(String rawResponse) {

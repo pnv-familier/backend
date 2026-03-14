@@ -9,6 +9,7 @@ import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.service.ContextManagerService;
 import com.familier.ai.service.GeminiService;
 import com.familier.ai.service.PromptService;
+import com.familier.ai.service.SummarizationScheduler;
 import com.familier.ai.service.SummarizationService;
 import com.familier.ai.service.provider.UserProvider;
 import org.springframework.data.domain.PageRequest;
@@ -29,20 +30,20 @@ public class AiController {
     private final PromptService promptService;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
-    private final SummarizationService summarizationService;
     private final ContextManagerService contextManagerService;
+    private final SummarizationScheduler summarizationService;
 
     public AiController(GeminiService geminiService,
                         PromptService promptService, 
                         ChatSessionRepository chatSessionRepository,
                         ChatMessageRepository chatMessageRepository,
-                        SummarizationService summarizationService,
+                        SummarizationScheduler summarizationScheduler,
                         ContextManagerService contextManagerService) {
         this.geminiService = geminiService;
         this.promptService = promptService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.summarizationService = summarizationService;
+        this.summarizationService = summarizationScheduler;
         this.contextManagerService = contextManagerService;
     }
 
@@ -142,14 +143,10 @@ public class AiController {
                 .map(ChatMessageDto::fromEntity);
     }
 
-    @PostMapping("/sessions/{sessionId}/summarize")
-    public Mono<ResponseEntity<Void>> summarizeSession(
-            @PathVariable String sessionId,
-            @RequestHeader(name = "X-User-Email") String email) {
-        return chatSessionRepository.findById(sessionId)
-                .flatMap(session -> summarizationService.summarizeSession(sessionId, email)
-                        .then(Mono.just(ResponseEntity.ok().<Void>build())))
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+    @PostMapping("/sessions/summarize")
+    public Mono<ResponseEntity<Void>> summarizeSession() {
+        summarizationService.summarizeOldActiveSessions();
+        return Mono.just(ResponseEntity.ok().build());
     }
 
     private Mono<ChatSession> getOrCreateSession(String sessionId, String firstMessage, String userEmail) {

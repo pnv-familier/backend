@@ -24,13 +24,14 @@ public class SummarizationScheduler {
         this.summarizationService = summarizationService;
     }
 
-    @Scheduled(fixedDelayString = "${scheduler.summarization.fixed-delay:900000}")
+    @Scheduled(fixedDelayString = "${scheduler.summarization.fixed-delay:960000}")
     public void summarizeOldActiveSessions() {
         log.info("Starting scheduled summarization task");
         
-        LocalDateTime thirtyMinutesAgo = LocalDateTime.now().minusMinutes(30);
+        LocalDateTime duration = LocalDateTime.now().minusMinutes(17);
 
-        chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", thirtyMinutesAgo)
+        chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", 
+                duration)
                 .flatMap(session -> {
                     log.info("Summarizing session: {} for user: {}", session.getId(), session.getUserEmail());
                     return summarizationService.summarizeSession(session.getId(), session.getUserEmail())
