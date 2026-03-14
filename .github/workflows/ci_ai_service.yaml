@@ -56,6 +56,7 @@ jobs:
       - name: Run Spring Boot app (skip tests)
         env:
           SPRING_PROFILES_ACTIVE: dev
+          MANAGEMENT_HEALTH_GRPC_ENABLED: false
           AI_SERVICE_PORT: 8080
           GEMINI_API_KEY: test_gemini_key
           MONGODB_URI: mongodb://localhost:27017/ai_service_test
