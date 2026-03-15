@@ -45,18 +45,26 @@ public class RestUserProvider implements UserProvider {
                 .header("X-Internal-Secret", internalSecret)
                 .retrieve()
                 .bodyToMono(Map.class)
-                .map(map -> UserProfileResponse.newBuilder()
-                        .setEmail((String) map.getOrDefault("email", ""))
-                        .setFullName((String) map.getOrDefault("fullName", ""))
-                        .setProfileJson((String) map.getOrDefault("profileJson", "{}"))
-                        .build())
+                .map(map -> {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> typedMap = (Map<String, Object>) map;
+                    return UserProfileResponse.newBuilder()
+                            .setEmail((String) typedMap.getOrDefault("email", ""))
+                            .setFullName((String) typedMap.getOrDefault("fullName", ""))
+                            .setHobbiesJson((String) typedMap.getOrDefault("hobbies", "[]"))
+                            .setBirthday((String) typedMap.getOrDefault("birthday", ""))
+                            .setGender((String) typedMap.getOrDefault("gender", ""))
+                            .build();
+                })
                 .retry(2)
                 .onErrorResume(e -> {
                     logger.error("Failed to fetch user profile from Core Service for email: {}. Fallback to default. Error: {}", email, e.getMessage());
                     return Mono.just(UserProfileResponse.newBuilder()
                             .setEmail(email)
                             .setFullName("User")
-                            .setProfileJson("{}")
+                            .setHobbiesJson("[]")
+                            .setBirthday("")
+                            .setGender("")
                             .build());
                 });
     }

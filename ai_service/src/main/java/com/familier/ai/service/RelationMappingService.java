@@ -64,7 +64,6 @@ public class RelationMappingService {
                 .flatMap(targetEmail -> {
                     log.debug("Mapped {} for user {} to email {}", relationType, currentUserEmail, targetEmail);
                     
-                    // Cache the result
                     return redisTemplate.opsForValue()
                             .set(cacheKey, targetEmail, CACHE_TTL)
                             .thenReturn(targetEmail);

@@ -68,10 +68,6 @@ public class User implements UserDetails {
     @Column(name = "hobbies")
     private List<String> hobbies;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "profile")
-    private Map<String, Object> profile;
-
     @Enumerated(EnumType.STRING)
     private Role role;
 

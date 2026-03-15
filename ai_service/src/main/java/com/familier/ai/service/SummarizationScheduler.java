@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Service
 @Slf4j
@@ -24,13 +24,14 @@ public class SummarizationScheduler {
         this.summarizationService = summarizationService;
     }
 
-    @Scheduled(fixedDelayString = "${scheduler.summarization.fixed-delay:900000}")
+    @Scheduled(fixedDelayString = "${scheduler.summarization.fixed-delay:960000}")
     public void summarizeOldActiveSessions() {
         log.info("Starting scheduled summarization task");
         
-        LocalDateTime thirtyMinutesAgo = LocalDateTime.now().minusMinutes(30);
+        Instant duration = Instant.now().minusSeconds(17 * 60);
 
-        chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", thirtyMinutesAgo)
+        chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", 
+                duration)
                 .flatMap(session -> {
                     log.info("Summarizing session: {} for user: {}", session.getId(), session.getUserEmail());
                     return summarizationService.summarizeSession(session.getId(), session.getUserEmail())

@@ -9,7 +9,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -24,10 +24,10 @@ public class ChatSession {
     private String id;
     private String userEmail; 
     private String targetContext;
-    private LocalDateTime createdAt;
+    private Instant createdAt;
     private String summary;
     @Builder.Default
     private String status = "ACTIVE";
-    private LocalDateTime lastUpdate;
-    private LocalDateTime lastSummarizedAt;
+    private Instant lastUpdate;
+    private Instant lastSummarizedAt;
 }

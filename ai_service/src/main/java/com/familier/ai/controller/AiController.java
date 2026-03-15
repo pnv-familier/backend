@@ -9,8 +9,7 @@ import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.service.ContextManagerService;
 import com.familier.ai.service.GeminiService;
 import com.familier.ai.service.PromptService;
-import com.familier.ai.service.SummarizationService;
-import com.familier.ai.service.provider.UserProvider;
+import com.familier.ai.service.SummarizationScheduler;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @RestController
 @RequestMapping("/ai")
@@ -29,23 +28,20 @@ public class AiController {
     private final PromptService promptService;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
-    private final UserProvider userProvider;
-    private final SummarizationService summarizationService;
     private final ContextManagerService contextManagerService;
+    private final SummarizationScheduler summarizationScheduler;
 
     public AiController(GeminiService geminiService,
                         PromptService promptService, 
                         ChatSessionRepository chatSessionRepository,
                         ChatMessageRepository chatMessageRepository,
-                        UserProvider userProvider,
-                        SummarizationService summarizationService,
+                        SummarizationScheduler summarizationScheduler,
                         ContextManagerService contextManagerService) {
         this.geminiService = geminiService;
         this.promptService = promptService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.userProvider = userProvider;
-        this.summarizationService = summarizationService;
+        this.summarizationScheduler = summarizationScheduler;
         this.contextManagerService = contextManagerService;
     }
 
@@ -56,20 +52,19 @@ public class AiController {
             @RequestParam(required = false) String taggedUserEmail,
             @RequestHeader(name = "X-User-Email") String email) throws Exception {
 
-        return userProvider.getUserProfile(email)
-                .flatMap(userProfile -> getOrCreateSession(sessionId, message, email)
-                        .flatMap(session -> contextManagerService.buildVariables(email, session.getId(), userProfile, message, taggedUserEmail)
-                                .flatMap(variables -> {
-                                    try {
-                                        String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v3", variables);
-                                        return Mono.just(ResponseEntity.ok()
-                                                .header("X-Session-Id", session.getId())
-                                                .body(saveUserMessage(session.getId(), message)
-                                                        .flatMapMany(savedMsg -> executeAiStream(session.getId(), message, enrichedPrompt))));
-                                    } catch (Exception e) {
-                                        return Mono.error(e);
-                                    }
-                                })));
+        return getOrCreateSession(sessionId, message, email)
+                .flatMap(session -> contextManagerService.buildVariables(email, session.getId(), message, taggedUserEmail)
+                        .flatMap(variables -> {
+                            try {
+                                String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v3", variables);
+                                return Mono.just(ResponseEntity.ok()
+                                        .header("X-Session-Id", session.getId())
+                                        .body(saveUserMessage(session.getId(), message)
+                                                .flatMapMany(savedMsg -> executeAiStream(session.getId(), message, enrichedPrompt))));
+                            } catch (Exception e) {
+                                return Mono.error(e);
+                            }
+                        }));
     }
 
     private Mono<ChatMessage> saveUserMessage(String sessionId, String content) {
@@ -77,7 +72,7 @@ public class AiController {
                 .sessionId(sessionId)
                 .sender(Sender.USER)
                 .content(content)
-                .timestamp(LocalDateTime.now())
+                .timestamp(Instant.now())
                 .build();
         return chatMessageRepository.save(userMessage)
                 .flatMap(msg -> updateSessionLastUpdate(sessionId).thenReturn(msg));
@@ -86,7 +81,7 @@ public class AiController {
     private Mono<Void> updateSessionLastUpdate(String sessionId) {
         return chatSessionRepository.findById(sessionId)
                 .flatMap(session -> {
-                    session.setLastUpdate(LocalDateTime.now());
+                    session.setLastUpdate(Instant.now());
                     if ("COMPLETED".equals(session.getStatus())) {
                         session.setStatus("ACTIVE");
                     }
@@ -121,7 +116,7 @@ public class AiController {
                 .sessionId(sessionId)
                 .sender(Sender.AI)
                 .content(fullContent)
-                .timestamp(LocalDateTime.now())
+                .timestamp(Instant.now())
                 .build();
         chatMessageRepository.save(aiMessage)
                 .flatMap(msg -> updateSessionLastUpdate(sessionId).thenReturn(msg))
@@ -151,8 +146,9 @@ public class AiController {
             @PathVariable String sessionId,
             @RequestHeader(name = "X-User-Email") String email) {
         return chatSessionRepository.findById(sessionId)
-                .flatMap(session -> summarizationService.summarizeSession(sessionId, email)
-                        .then(Mono.just(ResponseEntity.ok().<Void>build())))
+                .filter(session -> session.getUserEmail().equals(email))
+                .flatMap(session -> Mono.fromRunnable(() -> summarizationScheduler.summarizeOldActiveSessions()))
+                .then(Mono.just(ResponseEntity.ok().<Void>build()))
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
@@ -165,10 +161,10 @@ public class AiController {
         ChatSession newSession = ChatSession.builder()
                 .userEmail(userEmail)
                 .targetContext(targetContext)
-                .createdAt(LocalDateTime.now())
+                .createdAt(Instant.now())
                 .status("ACTIVE")
-                .lastUpdate(LocalDateTime.now())
-                .lastSummarizedAt(LocalDateTime.now())
+                .lastUpdate(Instant.now())
+                .lastSummarizedAt(Instant.now())
                 .build();
         return chatSessionRepository.save(newSession);
     }

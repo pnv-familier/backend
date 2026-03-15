@@ -62,7 +62,7 @@ public class MentionDetectionService {
         log.debug("Detecting mention in message: {}", message);
         
         String prompt = DETECTION_PROMPT.replace("{message}", message);
-        String url = "/v1beta/models/gemini-2.0-flash:generateContent?key=" + API_KEY;
+        String url = "/v1beta/models/gemini-2.5-flash:generateContent?key=" + API_KEY;
 
         Map<String, Object> body = Map.of(
                 "contents", List.of(Map.of(

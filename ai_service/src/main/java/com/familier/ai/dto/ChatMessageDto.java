@@ -4,14 +4,14 @@ import com.familier.ai.entity.Sender;
 import lombok.Builder;
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
 public class ChatMessageDto {
     private String id;
     private String content;
-    private LocalDateTime timestamp;
+    private Instant timestamp;
     private Boolean isAi;
 
     public static ChatMessageDto fromEntity(com.familier.ai.entity.ChatMessage entity) {
