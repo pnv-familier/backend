@@ -16,7 +16,7 @@ public class CorsConfig {
         CorsConfiguration corsConfig = new CorsConfiguration();
         corsConfig.addAllowedOriginPattern("*");
         corsConfig.addAllowedOrigin("https://servermonitor-pi.vercel.app");
-        corsConfig.setAllowedMethods(Arrays.asList("GET", "OPTIONS"));
+        corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         corsConfig.setAllowedHeaders(Arrays.asList("*"));
         corsConfig.setMaxAge(60L);
 
