@@ -18,7 +18,7 @@ public class Suggestion {
     private String title;
     private String description;
 
-    private BasePayload payload;
+    private org.bson.Document payload;
 
     @Builder.Default
     private SuggestionStatus status = SuggestionStatus.PENDING;

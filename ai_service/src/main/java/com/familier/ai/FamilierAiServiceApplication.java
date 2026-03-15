@@ -8,7 +8,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import io.github.cdimascio.dotenv.Dotenv;
 
 @SpringBootApplication(exclude = {
-		net.devh.boot.grpc.client.autoconfigure.GrpcClientAutoConfiguration.class
+		net.devh.boot.grpc.client.autoconfigure.GrpcClientAutoConfiguration.class,
+		net.devh.boot.grpc.client.autoconfigure.GrpcClientHealthAutoConfiguration.class
 })
 @EnableReactiveMongoRepositories(basePackages = "com.familier.ai.repository")
 @EnableScheduling
