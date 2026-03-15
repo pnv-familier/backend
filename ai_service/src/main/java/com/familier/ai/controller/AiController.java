@@ -164,6 +164,12 @@ public class AiController {
                                 
                                 // Handle metadata injection
                                 if (currentTag[0].equals("metadata")) {
+                                    // Inject type field
+                                    if (suggestionType != null) {
+                                        extracted = injectTypeField(extracted, suggestionType);
+                                    }
+                                    
+                                    // Inject assigneeEmail for TASK type
                                     if (suggestionType != null && suggestionType.equals("TASK") 
                                             && targetUserEmail != null && !targetUserEmail.isEmpty()) {
                                         extracted = injectAssigneeEmail(extracted, targetUserEmail);
@@ -256,6 +262,12 @@ public class AiController {
                                 extracted = decodeHtmlEntities(extracted);
                                 
                                 if (tagType.equals("metadata")) {
+                                    // Inject type field
+                                    if (suggestionType != null) {
+                                        extracted = injectTypeField(extracted, suggestionType);
+                                    }
+                                    
+                                    // Inject assigneeEmail for TASK type
                                     if (suggestionType != null && suggestionType.equals("TASK") 
                                             && targetUserEmail != null && !targetUserEmail.isEmpty()) {
                                         extracted = injectAssigneeEmail(extracted, targetUserEmail);
@@ -349,12 +361,35 @@ public class AiController {
 
     private String decodeHtmlEntities(String text) {
         if (text == null) return null;
-        return text
-                .replace("&quot;", "\"")
-                .replace("&amp;", "&")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&#39;", "'");
+        
+        // Decode multiple times in case of double encoding
+        String decoded = text;
+        for (int i = 0; i < 3; i++) {
+            String temp = decoded
+                    .replace("&quot;", "\"")
+                    .replace("&amp;", "&")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&#39;", "'")
+                    .replace("&#x27;", "'")
+                    .replace("&#x2F;", "/");
+            
+            if (temp.equals(decoded)) break;
+            decoded = temp;
+        }
+        return decoded;
+    }
+
+    private String injectTypeField(String metadata, String type) {
+        try {
+            if (!metadata.contains("\"type\"")) {
+                int insertPos = metadata.indexOf("{") + 1;
+                return metadata.substring(0, insertPos) + " \"type\": \"" + type + "\"," + metadata.substring(insertPos);
+            }
+        } catch (Exception e) {
+            log.error("Failed to inject type field", e);
+        }
+        return metadata;
     }
 
     /**
