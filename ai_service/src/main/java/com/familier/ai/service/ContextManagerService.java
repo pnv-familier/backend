@@ -1,5 +1,6 @@
 package com.familier.ai.service;
 
+import com.familier.ai.dto.BuildVariablesResult;
 import com.familier.ai.dto.TargetProfileWithRelation;
 import com.familier.ai.entity.UserContext;
 import com.familier.ai.repository.ChatMessageRepository;
@@ -24,7 +25,7 @@ public class ContextManagerService {
     private final UserContextRepository userContextRepository;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
-    private final MentionDetectionService mentionDetectionService;
+    private final UnifiedDetectionService unifiedDetectionService;
     private final TargetProfileService targetProfileService;
     private final RelationMappingService relationMappingService;
     private final UserProvider userProvider;
@@ -33,7 +34,7 @@ public class ContextManagerService {
     public ContextManagerService(UserContextRepository userContextRepository,
                                  ChatSessionRepository chatSessionRepository,
                                  ChatMessageRepository chatMessageRepository,
-                                 MentionDetectionService mentionDetectionService,
+                                 UnifiedDetectionService unifiedDetectionService,
                                  TargetProfileService targetProfileService,
                                  RelationMappingService relationMappingService,
                                  UserProvider userProvider,
@@ -41,26 +42,26 @@ public class ContextManagerService {
         this.userContextRepository = userContextRepository;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.mentionDetectionService = mentionDetectionService;
+        this.unifiedDetectionService = unifiedDetectionService;
         this.targetProfileService = targetProfileService;
         this.relationMappingService = relationMappingService;
         this.userProvider = userProvider;
         this.objectMapper = objectMapper;
     }
 
-    public Mono<Map<String, String>> buildVariables(String email, String sessionId, String message, String taggedUserEmail) {
+    public Mono<BuildVariablesResult> buildVariables(String email, String sessionId, String message, String taggedUserEmail) {
         return Mono.zip(
                 userProvider.getUserProfile(email),
                 getUserContext(email),
                 getSessionSummary(sessionId),
                 getRecentMessages(sessionId, 5),
-                resolveTargetUser(email, message, taggedUserEmail)
+                unifiedDetectionService.detectUnified(message)
         ).flatMap(tuple -> {
             UserProfileResponse userProfile = tuple.getT1();
             UserContext userContext = tuple.getT2();
             String summary = tuple.getT3();
             String recentMessages = tuple.getT4();
-            TargetUserResolution targetResolution = tuple.getT5();
+            com.familier.ai.dto.UnifiedDetectionResult detection = tuple.getT5();
             
             Map<String, Object> currentUserProfile = convertUserProfileResponseToMap(userProfile);
             Map<String, String> variables = new HashMap<>();
@@ -83,17 +84,39 @@ public class ContextManagerService {
             
             variables.put("RECENT_MESSAGES", recentMessages);
             
-            if (targetResolution.hasTarget()) {
-                return buildTargetVariables(targetResolution.getTargetEmail(), email)
-                        .map(targetVars -> {
-                            variables.putAll(targetVars);
-                            return variables;
-                        });
-            } else {
-                variables.put("MEMBER_REFERENCE_PROMPT", "");
-                return Mono.just(variables);
-            }
+            return resolveTargetUserFromDetection(email, detection.getMention(), taggedUserEmail)
+                    .flatMap(targetResolution -> {
+                        if (targetResolution.hasTarget()) {
+                            return buildTargetVariables(targetResolution.getTargetEmail(), email)
+                                    .map(targetVars -> {
+                                        variables.putAll(targetVars);
+                                        return new BuildVariablesResult(variables, detection, targetResolution.getTargetEmail());
+                                    });
+                        } else {
+                            variables.put("MEMBER_REFERENCE_PROMPT", "");
+                            return Mono.just(new BuildVariablesResult(variables, detection, null));
+                        }
+                    });
         });
+    }
+
+    private Mono<TargetUserResolution> resolveTargetUserFromDetection(String currentUserEmail, 
+            com.familier.ai.dto.UnifiedDetectionResult.MentionDetection mention, String taggedUserEmail) {
+        if (taggedUserEmail != null && !taggedUserEmail.isEmpty()) {
+            return Mono.just(new TargetUserResolution(true, taggedUserEmail, 1.0));
+        }
+        
+        if (mention.isHasMention() && mention.getConfidence() >= 0.7) {
+            return relationMappingService.mapRelationToEmail(currentUserEmail, mention.getTargetRelation())
+                    .filter(targetEmail -> !targetEmail.isEmpty())
+                    .map(targetEmail -> {
+                        log.info("Successfully mapped {} to email: {}", mention.getTargetRelation(), targetEmail);
+                        return new TargetUserResolution(true, targetEmail, mention.getConfidence());
+                    })
+                    .defaultIfEmpty(new TargetUserResolution(false, null, mention.getConfidence()));
+        }
+        
+        return Mono.just(new TargetUserResolution(false, null, 0.0));
     }
 
     private Map<String, Object> convertUserProfileResponseToMap(UserProfileResponse userProfile) {
@@ -106,29 +129,7 @@ public class ContextManagerService {
         return map;
     }
 
-    private Mono<TargetUserResolution> resolveTargetUser(String currentUserEmail, String message, String taggedUserEmail) {
-        if (taggedUserEmail != null && !taggedUserEmail.isEmpty()) {
-            return Mono.just(new TargetUserResolution(true, taggedUserEmail, 1.0));
-        }
-        
-        return mentionDetectionService.detectMention(message)
-                .flatMap(detection -> {
-                    if (detection.isHasMention() && detection.getConfidence() >= 0.7) {
-                        return relationMappingService.mapRelationToEmail(currentUserEmail, detection.getTargetRelation())
-                                .filter(targetEmail -> !targetEmail.isEmpty())
-                                .map(targetEmail -> {
-                                    log.info("Successfully mapped {} to email: {}", detection.getTargetRelation(), targetEmail);
-                                    return new TargetUserResolution(true, targetEmail, detection.getConfidence());
-                                })
-                                .defaultIfEmpty(new TargetUserResolution(false, null, detection.getConfidence()));
-                    }
-                    return Mono.just(new TargetUserResolution(false, null, detection.getConfidence()));
-                })
-                .onErrorResume(e -> {
-                    log.error("Error in mention detection", e);
-                    return Mono.just(new TargetUserResolution(false, null, 0.0));
-                });
-    }
+
 
     private Mono<Map<String, String>> buildTargetVariables(String targetEmail, String currentUserEmail) {
         return Mono.zip(
