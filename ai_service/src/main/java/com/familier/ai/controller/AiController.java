@@ -356,6 +356,30 @@ public class AiController {
                     content = content.replaceAll("<suggestions>.*?</suggestions>", "");
                     content = content.replaceAll("<suggestion_metadata>.*?</suggestion_metadata>", "");
                     persistAiResponse(sessionId, content.trim(), null);
+                })
+                .onErrorResume(e -> {
+                    log.error("Gemini API error: {}", e.getMessage(), e);
+                    
+                    String errorMessage;
+                    String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+                    
+                    if (errorMsg.contains("model") || errorMsg.contains("gemini") || 
+                        errorMsg.contains("ai") || errorMsg.contains("generation")) {
+                        errorMessage = "Hiện tại Familier đang gặp lỗi với model AI, vui lòng thử lại sau.";
+                    } else {
+                        errorMessage = "Hiện tại Familier đang gặp vấn đề, vui lòng thử lại sau.";
+                    }
+                    
+                    return Flux.just(
+                        ServerSentEvent.<String>builder()
+                            .event("message")
+                            .data(errorMessage)
+                            .build(),
+                        ServerSentEvent.<String>builder()
+                            .event("done")
+                            .data("[DONE]")
+                            .build()
+                    );
                 });
     }
 
