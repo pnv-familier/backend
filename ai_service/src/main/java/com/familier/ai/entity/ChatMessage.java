@@ -8,6 +8,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
+import java.util.List;
 
 @Data
 @Builder
@@ -20,5 +21,6 @@ public class ChatMessage {
     private String sessionId;
     private Sender sender;
     private String content;
+    private List<String> suggestions;  // Added per spec: store suggestions array
     private Instant timestamp;
 }
