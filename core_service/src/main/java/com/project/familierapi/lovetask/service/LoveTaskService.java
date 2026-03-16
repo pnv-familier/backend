@@ -101,8 +101,13 @@ public class LoveTaskService {
                         task.getSender().getFullName(), task.getTitle());
 
         // Create post in family space
+        List<String> imageUrls = request != null && request.getImageUrls() != null
+                ? request.getImageUrls()
+                : (request != null && request.getImageUrl() != null ? List.of(request.getImageUrl()) : null);
+
         CreatePostRequest postRequest = CreatePostRequest.builder()
                 .content(postContent)
+                .imageUrls(imageUrls)
                 .build();
 
         var createdPost = postService.createPost(user, postRequest);
