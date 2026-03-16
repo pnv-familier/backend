@@ -28,19 +28,70 @@ public class PromptService {
     }
 
     private String injectSuggestionMetadataInstruction(String content, String suggestionType) {
+        int currentYear = java.time.Year.now().getValue();
+        
         String instruction = "\n\n# SUGGESTION METADATA INSTRUCTION\n" +
-                "Bạn đã phát hiện một hành động tiềm năng. Hãy hỏi người dùng xác nhận trong văn bản (ví dụ: \"Bạn có muốn mình...?\").\n" +
+                "Bạn đã phát hiện một hành động tiềm năng. Hãy hỏi người dùng xác nhận trong văn bản một cách ngắn gọn (ví dụ: \"Bạn có muốn mình...?\").\n" +
                 "Ở cuối phần hồi của bạn, thêm thẻ <suggestion_metadata> chứa JSON object theo cấu trúc sau:\n\n";
         
         switch (suggestionType) {
             case "EVENT":
-                instruction += "{ \"title\": string, \"startTime\": \"HH:mm\", \"endTime\": \"HH:mm\", \"date\": int, \"month\": int, \"year\": int, \"location\": string|null }";
+                instruction += "{ \"title\": string, \"startTime\": \"HH:mm\", \"endTime\": \"HH:mm\", \"date\": int, \"month\": int, \"year\": int, \"location\": string|null }\n\n" +
+                        "MỤC ĐÍCH: Tạo sự kiện có thời gian và địa điểm cụ thể\n\n" +
+                        "HƯỚNG DẪN EXTRACT:\n" +
+                        "- title: Tóm tắt sự kiện từ tin nhắn (ví dụ: \"Đưa bố đi khám\")\n" +
+                        "- startTime/endTime: Parse từ tin nhắn theo format \"HH:mm\" (AM/PM). Nếu chỉ có 1 giờ, endTime = startTime + 1 giờ\n" +
+                        "- date/month/year: Tính từ ngày hiện tại. \"Mai\" = hôm nay + 1 ngày, \"Thứ 7\" = tính đến thứ 7 tuần này\n" +
+                        "  LƯU Ý: Năm hiện tại là " + currentYear + "\n" +
+                        "- location: Extract từ tin nhắn HOẶC SỬ DỤNG {{facts}}/{{TARGET_PROFILE_WITH_RELATION}} để suggest địa điểm phù hợp với sở thích\n\n" +
+                        "VÍ DỤ:\n" +
+                        "- User: \"Mai 9h đưa bố đi bệnh viện\"\n" +
+                        "  → { \"title\": \"Đưa bố đi khám\", \"startTime\": \"09:00\", \"endTime\": \"10:00\", \"date\": 15, \"month\": 1, \"year\": " + currentYear + ", \"location\": \"Bệnh viện\" }\n\n" +
+                        "- User: \"Thứ 7 này đi ăn với gia đình\"\n" +
+                        "  {{facts}}: \"Bố thích ăn hải sản\"\n" +
+                        "  → { \"title\": \"Ăn tối cùng gia đình\", \"startTime\": \"18:00\", \"endTime\": \"20:00\", \"date\": 18, \"month\": 1, \"year\": " + currentYear + ", \"location\": \"Nhà hàng hải sản\" }\n\n" +
+                        "VALIDATION:\n" +
+                        "- startTime phải < endTime\n" +
+                        "- date hợp lệ (1-31), month (1-12)\n" +
+                        "- Nếu thiếu thông tin quan trọng (thời gian/ngày), HỎI user trước khi tạo metadata";
                 break;
             case "TASK":
-                instruction += "{ \"assigneeEmail\": string (email của người được giao), \"title\": string, \"description\": string }";
+                instruction += "{ \"assigneeEmail\": string, \"title\": string, \"description\": string }\n\n" +
+                        "MỤC ĐÍCH: Tạo công việc chăm sóc cho thành viên cụ thể\n\n" +
+                        "HƯỚNG DẪN EXTRACT:\n" +
+                        "- assigneeEmail: Backend tự động inject (KHÔNG cần điền)\n" +
+                        "- title: Tóm tắt task ngắn gọn (ví dụ: \"Nhắc mẹ uống thuốc huyết áp\")\n" +
+                        "- description: Chi tiết task. SỬ DỤNG {{facts}} để làm phong phú:\n" +
+                        "  + Nếu {{facts}} có thông tin về thuốc/thời gian/liều lượng → thêm vào description\n" +
+                        "  + Nếu {{TARGET_PROFILE_WITH_RELATION}} có sở thích → gợi ý cách thực hiện phù hợp\n" +
+                        "  + Thêm lưu ý cụ thể để task dễ thực hiện hơn\n\n" +
+                        "VÍ DỤ:\n" +
+                        "- User: \"Nhắc mẹ uống thuốc\"\n" +
+                        "  {{facts}}: \"Mẹ uống thuốc huyết áp Amlodipine 5mg mỗi sáng 8h\"\n" +
+                        "  → { \"title\": \"Nhắc mẹ uống thuốc huyết áp\", \"description\": \"Nhắc mẹ uống Amlodipine 5mg vào 8h sáng. Nhớ kiểm tra xem mẹ đã ăn sáng chưa vì thuốc nên uống sau bữa ăn.\" }\n\n" +
+                        "- User: \"Cần mua vitamin cho con\"\n" +
+                        "  {{facts}}: \"Con hay bị cảm\"\n" +
+                        "  → { \"title\": \"Mua vitamin cho con\", \"description\": \"Mua vitamin C và D cho con để tăng cường sức đề kháng. Con hay bị cảm nên cần bổ sung đều đặn.\" }\n\n" +
+                        "VALIDATION:\n" +
+                        "- title không trống, ngắn gọn\n" +
+                        "- description phải cụ thể, actionable, có thể thực hiện ngay";
                 break;
             case "OFFLINE":
-                instruction += "{ \"action\": string (đề xuất hành động dựa trên sở thích của thành viên) }";
+                instruction += "{ \"action\": string }\n\n" +
+                        "MỤC ĐÍCH: Khuyến khích người dùng kết nối THỰC TẾ với gia đình (không qua AI)\n\n" +
+                        "HƯỚNG DẪN:\n" +
+                        "- action phải là hành động CỤ THỂ, THỰC TẾ mà user có thể làm NGAY\n" +
+                        "- SỬ DỤNG {{facts}} và {{TARGET_PROFILE_WITH_RELATION}} để suggest hành động phù hợp với sở thích/hoàn cảnh\n" +
+                        "- Tập trung vào kết nối trực tiếp: gọi điện, gặp mặt, cùng làm việc gì đó\n\n" +
+                        "VÍ DỤ:\n" +
+                        "- User: \"Hôm nay mệt quá\"\n" +
+                        "  {{facts}}: \"Mẹ thích nấu ăn\", \"Bố thích câu cá\"\n" +
+                        "  → { \"action\": \"Gọi điện cho mẹ tâm sự hoặc xuống bếp nấu món mẹ thích cùng nhau. Kết nối thực tế sẽ giúp bạn thư giãn hơn.\" }\n\n" +
+                        "- User: \"Stress công việc quá\"\n" +
+                        "  {{facts}}: \"Bố hay đi câu cá cuối tuần\"\n" +
+                        "  → { \"action\": \"Rủ bố đi câu cá cuối tuần này. Dành thời gian bên nhau sẽ giúp bạn giải tỏa căng thẳng.\" }\n\n" +
+                        "- User: \"Cảm thấy cô đơn\"\n" +
+                        "  → { \"action\": \"Gọi điện cho gia đình hoặc về nhà ăn cơm cùng nhau. Đôi khi chỉ cần ngồi bên nhau cũng đủ ấm lòng rồi.\" }";
                 break;
         }
         
