@@ -110,6 +110,33 @@ public class SuggestionService {
                 });
     }
 
+    public Mono<String> createSuggestion(String receiverEmail, SuggestionType type, Object payloadObj, String triggerContext) {
+        try {
+            BasePayload payload = parsePayload(type.name(), payloadObj);
+            String payloadJson = objectMapper.writeValueAsString(payload);
+            org.bson.Document payloadDoc = org.bson.Document.parse(payloadJson);
+
+            Suggestion suggestion = Suggestion.builder()
+                    .type(type)
+                    .receiverEmail(receiverEmail)
+                    .title(extractTitle(type, payload))
+                    .description(extractDescription(type, payload))
+                    .payload(payloadDoc)
+                    .status(SuggestionStatus.PENDING)
+                    .createdAt(Instant.now())
+                    .triggerContext(triggerContext)
+                    .build();
+
+            return suggestionRepository.save(suggestion)
+                    .map(Suggestion::getId)
+                    .doOnSuccess(id -> log.info("Suggestion created: id={}, type={}, receiver={}",
+                            id, type, receiverEmail));
+        } catch (Exception e) {
+            log.error("Failed to create suggestion for {}", receiverEmail, e);
+            return Mono.error(e);
+        }
+    }
+
     private BasePayload parsePayload(String type, Object payloadObj) throws Exception {
         String json = objectMapper.writeValueAsString(payloadObj);
 

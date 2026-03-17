@@ -1,6 +1,7 @@
 package com.familier.ai.controller;
 
 import com.familier.ai.dto.ChatMessageDto;
+import com.familier.ai.dto.FamilyMembersDto;
 import com.familier.ai.entity.ChatMessage;
 import com.familier.ai.entity.ChatSession;
 import com.familier.ai.entity.Sender;
@@ -9,7 +10,10 @@ import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.service.ContextManagerService;
 import com.familier.ai.service.GeminiService;
 import com.familier.ai.service.PromptService;
+import com.familier.ai.service.SuggestionService;
 import com.familier.ai.service.SummarizationScheduler;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -44,19 +48,31 @@ public class AiController {
     private final ChatMessageRepository chatMessageRepository;
     private final ContextManagerService contextManagerService;
     private final SummarizationScheduler summarizationScheduler;
+    private final SuggestionService suggestionService;
+    private final WebClient.Builder webClientBuilder;
+    private final String coreServiceUrl;
+    private final String internalSecret;
 
     public AiController(GeminiService geminiService,
             PromptService promptService,
             ChatSessionRepository chatSessionRepository,
             ChatMessageRepository chatMessageRepository,
             SummarizationScheduler summarizationScheduler,
-            ContextManagerService contextManagerService) {
+            ContextManagerService contextManagerService,
+            SuggestionService suggestionService,
+            WebClient.Builder webClientBuilder,
+            @Value("${CORE_SERVICE_URL}") String coreServiceUrl,
+            @Value("${application.security.internal.secret}") String internalSecret) {
         this.geminiService = geminiService;
         this.promptService = promptService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.summarizationScheduler = summarizationScheduler;
         this.contextManagerService = contextManagerService;
+        this.suggestionService = suggestionService;
+        this.webClientBuilder = webClientBuilder;
+        this.coreServiceUrl = coreServiceUrl;
+        this.internalSecret = internalSecret;
     }
 
     @GetMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -85,7 +101,7 @@ public class AiController {
                                         .body(saveUserMessage(session.getId(), message)
                                                 .flatMapMany(savedMsg -> executeAiStream(session.getId(), message,
                                                         enrichedPrompt,
-                                                        result.getTargetUserEmail(), suggestionType))));
+                                                        result.getTargetUserEmail(), suggestionType, email))));
                             } catch (Exception e) {
                                 return Mono.error(e);
                             }
@@ -116,19 +132,11 @@ public class AiController {
                 .then();
     }
 
-    /**
-     * Execute AI stream with real-time chunk processing:
-     * 1. Stream chunks immediately until detecting tag start
-     * 2. Buffer content inside tags (<suggestions> and <suggestion_metadata>)
-     * 3. Extract and send as separate events when tags close
-     * 4. Continue streaming after tags
-     */
     private Flux<ServerSentEvent<String>> executeAiStream(String sessionId, String message, String systemPrompt,
-            String targetUserEmail, String suggestionType) {
-        
+            String targetUserEmail, String suggestionType, String userEmail) {
         StringBuilder contentAccumulator = new StringBuilder();
         StringBuilder tagBuffer = new StringBuilder();
-        String[] currentTag = {null}; // "suggestions" or "metadata"
+        String[] currentTag = {null};
         
         return geminiService.streamGenerateContent(systemPrompt, message)
                 .concatMap(event -> {
@@ -140,19 +148,15 @@ public class AiController {
 
                     List<ServerSentEvent<String>> events = new ArrayList<>();
                     
-                    // If currently buffering a tag
                     if (currentTag[0] != null) {
                         tagBuffer.append(data);
                         
-                        // Check if tag is closed
                         String closingTag = currentTag[0].equals("suggestions") 
                                 ? "</suggestions>" 
                                 : "</suggestion_metadata>";
                         
                         if (tagBuffer.toString().contains(closingTag)) {
                             String buffered = tagBuffer.toString();
-                            
-                            // Extract tag content
                             Pattern pattern = currentTag[0].equals("suggestions")
                                     ? SUGGESTIONS_PATTERN
                                     : METADATA_PATTERN;
@@ -162,32 +166,28 @@ public class AiController {
                                 String extracted = matcher.group(1).trim();
                                 extracted = decodeHtmlEntities(extracted);
                                 
-                                // Handle metadata injection
                                 if (currentTag[0].equals("metadata")) {
-                                    // Inject type field
                                     if (suggestionType != null) {
                                         extracted = injectTypeField(extracted, suggestionType);
                                     }
                                     
-                                    // Inject assigneeEmail for TASK type
                                     if (suggestionType != null && suggestionType.equals("TASK") 
                                             && targetUserEmail != null && !targetUserEmail.isEmpty()) {
                                         extracted = injectAssigneeEmail(extracted, targetUserEmail);
                                     }
                                     
-                                    if (isValidJson(extracted)) {
+                                    contentAccumulator.append("<suggestion_metadata>").append(extracted).append("</suggestion_metadata>");
+                                    
+                                    if (isValidJson(extracted) && !"TASK".equals(suggestionType)) {
                                         events.add(ServerSentEvent.<String>builder()
                                                 .event("metadata")
                                                 .data(extracted)
                                                 .build());
-                                        log.debug("Sent metadata event");
                                     }
                                 } else {
-                                    // suggestions tag - will be sent at the end
                                     contentAccumulator.append("<suggestions>").append(extracted).append("</suggestions>");
                                 }
                                 
-                                // Get content after closing tag
                                 String afterTag = buffered.substring(buffered.indexOf(closingTag) + closingTag.length());
                                 if (!afterTag.isEmpty()) {
                                     contentAccumulator.append(afterTag);
@@ -198,19 +198,15 @@ public class AiController {
                                 }
                             }
                             
-                            // Reset buffer
                             currentTag[0] = null;
                             tagBuffer.setLength(0);
                         }
-                        // Still inside tag, continue buffering
                         return Flux.fromIterable(events);
                     }
                     
-                    // Check if chunk contains tag start
                     int suggestionsStart = data.indexOf("<suggestions>");
                     int metadataStart = data.indexOf("<suggestion_metadata>");
                     
-                    // Determine which tag appears first (if any)
                     int tagStart = -1;
                     String tagType = null;
                     
@@ -231,7 +227,6 @@ public class AiController {
                     }
                     
                     if (tagStart >= 0) {
-                        // Stream content before tag
                         String beforeTag = data.substring(0, tagStart);
                         if (!beforeTag.isEmpty()) {
                             contentAccumulator.append(beforeTag);
@@ -241,12 +236,10 @@ public class AiController {
                                     .build());
                         }
                         
-                        // Start buffering from tag
                         String fromTag = data.substring(tagStart);
                         currentTag[0] = tagType;
                         tagBuffer.append(fromTag);
                         
-                        // Check if tag closes in same chunk
                         String closingTag = tagType.equals("suggestions") 
                                 ? "</suggestions>" 
                                 : "</suggestion_metadata>";
@@ -262,23 +255,22 @@ public class AiController {
                                 extracted = decodeHtmlEntities(extracted);
                                 
                                 if (tagType.equals("metadata")) {
-                                    // Inject type field
                                     if (suggestionType != null) {
                                         extracted = injectTypeField(extracted, suggestionType);
                                     }
                                     
-                                    // Inject assigneeEmail for TASK type
                                     if (suggestionType != null && suggestionType.equals("TASK") 
                                             && targetUserEmail != null && !targetUserEmail.isEmpty()) {
                                         extracted = injectAssigneeEmail(extracted, targetUserEmail);
                                     }
                                     
-                                    if (isValidJson(extracted)) {
+                                    contentAccumulator.append("<suggestion_metadata>").append(extracted).append("</suggestion_metadata>");
+                                    
+                                    if (isValidJson(extracted) && !"TASK".equals(suggestionType)) {
                                         events.add(ServerSentEvent.<String>builder()
                                                 .event("metadata")
                                                 .data(extracted)
                                                 .build());
-                                        log.debug("Sent metadata event");
                                     }
                                 } else {
                                     contentAccumulator.append("<suggestions>").append(extracted).append("</suggestions>");
@@ -302,7 +294,6 @@ public class AiController {
                         return Flux.fromIterable(events);
                     }
                     
-                    // Normal chunk without tags
                     contentAccumulator.append(data);
                     events.add(ServerSentEvent.<String>builder()
                             .event("message")
@@ -312,19 +303,29 @@ public class AiController {
                     return Flux.fromIterable(events);
                 })
                 .concatWith(Flux.defer(() -> {
-                    // End of stream: extract suggestions and persist
                     String fullContent = contentAccumulator.toString();
-                    
-                    log.info("Full AI response received: {} chars", fullContent.length());
                     
                     List<ServerSentEvent<String>> finalEvents = new ArrayList<>();
                     
-                    // Extract suggestions
+                    Object metadata = null;
+                    if ("TASK".equals(suggestionType)) {
+                        Matcher metadataMatcher = METADATA_PATTERN.matcher(fullContent);
+                        if (metadataMatcher.find()) {
+                            String metadataJson = metadataMatcher.group(1).trim();
+                            metadataJson = decodeHtmlEntities(metadataJson);
+                            try {
+                                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                                metadata = mapper.readValue(metadataJson, Object.class);
+                            } catch (Exception e) {
+                                log.error("Failed to parse metadata", e);
+                            }
+                        }
+                    }
+                    
                     String suggestionsJson = null;
                     Matcher suggestionsMatcher = SUGGESTIONS_PATTERN.matcher(fullContent);
                     if (suggestionsMatcher.find()) {
                         suggestionsJson = suggestionsMatcher.group(1).trim();
-                        log.info("Suggestions extracted: {}", suggestionsJson);
                         fullContent = suggestionsMatcher.replaceAll("");
                         
                         finalEvents.add(ServerSentEvent.<String>builder()
@@ -334,15 +335,14 @@ public class AiController {
                     }
                     
                     String cleanContent = fullContent.trim();
-                    log.info("Clean content after tag removal: {} chars", cleanContent.length());
-                    
-                    // Parse suggestions array for DB storage
                     List<String> suggestionsList = parseSuggestionsArray(suggestionsJson);
                     
-                    // Persist to DB
                     persistAiResponse(sessionId, cleanContent, suggestionsList);
                     
-                    // Send done event
+                    if ("TASK".equals(suggestionType) && metadata != null) {
+                        createSuggestionsForFamilyMembers(userEmail, suggestionType, metadata);
+                    }
+                    
                     finalEvents.add(ServerSentEvent.<String>builder()
                             .event("done")
                             .data("[DONE]")
@@ -386,7 +386,6 @@ public class AiController {
     private String decodeHtmlEntities(String text) {
         if (text == null) return null;
         
-        // Decode multiple times in case of double encoding
         String decoded = text;
         for (int i = 0; i < 3; i++) {
             String temp = decoded
@@ -416,17 +415,15 @@ public class AiController {
         return metadata;
     }
 
-    /**
-     * Parse suggestions JSON array into List<String>
-     */
     private List<String> parseSuggestionsArray(String suggestionsJson) {
         if (suggestionsJson == null || suggestionsJson.trim().isEmpty()) {
             return null;
         }
         
         try {
+            String decoded = decodeHtmlEntities(suggestionsJson);
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String[] array = mapper.readValue(suggestionsJson, String[].class);
+            String[] array = mapper.readValue(decoded, String[].class);
             return Arrays.asList(array);
         } catch (Exception e) {
             log.error("Failed to parse suggestions JSON: {}", suggestionsJson, e);
@@ -444,7 +441,6 @@ public class AiController {
             mapper.readTree(json);
             return true;
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            log.error("JSON validation failed: {}", e.getMessage());
             return false;
         }
     }
@@ -462,13 +458,8 @@ public class AiController {
         return metadata;
     }
 
-    /**
-     * Persist AI response with suggestions to database
-     * Per spec: Store content + suggestions array
-     */
     private void persistAiResponse(String sessionId, String content, List<String> suggestions) {
         if (content == null || content.isEmpty()) {
-            log.warn("Empty content, skipping persistence");
             return;
         }
 
@@ -480,14 +471,45 @@ public class AiController {
                 .timestamp(Instant.now())
                 .build();
         
-        log.info("Persisting AI message: content={} chars, suggestions={}", 
-                content.length(), suggestions != null ? suggestions.size() : 0);
-        
         chatMessageRepository.save(aiMessage)
                 .flatMap(msg -> updateSessionLastUpdate(sessionId).thenReturn(msg))
                 .subscribe(
-                    saved -> log.debug("AI message saved: id={}", saved.getId()),
+                    saved -> {},
                     error -> log.error("Failed to save AI message", error)
+                );
+    }
+
+    private void createSuggestionsForFamilyMembers(String userEmail, String suggestionType, Object metadata) {
+        if (!"TASK".equals(suggestionType)) {
+            return;
+        }
+
+        WebClient webClient = webClientBuilder.baseUrl(coreServiceUrl).build();
+        webClient.get()
+                .uri("/api/v1/families/members-for-mention")
+                .header("X-Internal-Secret", internalSecret)
+                .header("X-User-Email", userEmail)
+                .retrieve()
+                .bodyToMono(FamilyMembersDto.class)
+                .subscribe(
+                    response -> {
+                        if (response.getMembers() != null && !response.getMembers().isEmpty()) {
+                            response.getMembers().stream()
+                                    .filter(member -> !member.getEmail().equals(userEmail))
+                                    .forEach(member -> {
+                                        suggestionService.createSuggestion(
+                                                member.getEmail(),
+                                                com.familier.ai.entity.SuggestionType.TASK,
+                                                metadata,
+                                                "auto-created"
+                                        ).subscribe(
+                                            id -> log.info("Suggestion created for member: {}, id={}", member.getEmail(), id),
+                                            error -> log.error("Failed to create suggestion for member: {}", member.getEmail(), error)
+                                        );
+                                    });
+                        }
+                    },
+                    error -> log.error("Failed to fetch family members: {}", error.getMessage())
                 );
     }
 
