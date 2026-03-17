@@ -36,20 +36,20 @@ public class PromptService {
         
         switch (suggestionType) {
             case "EVENT":
-                instruction += "{ \"title\": string, \"startTime\": \"HH:mm\", \"endTime\": \"HH:mm\", \"date\": int, \"month\": int, \"year\": int, \"location\": string|null }\n\n" +
+                instruction += "{ \"title\": string, \"startTime\": \"h:mm AM/PM\", \"endTime\": \"h:mm AM/PM\", \"date\": int, \"month\": int, \"year\": int, \"location\": string|null }\n\n" +
                         "MỤC ĐÍCH: Tạo sự kiện có thời gian và địa điểm cụ thể\n\n" +
                         "HƯỚNG DẪN EXTRACT:\n" +
                         "- title: Tóm tắt sự kiện từ tin nhắn (ví dụ: \"Đưa bố đi khám\")\n" +
-                        "- startTime/endTime: Parse từ tin nhắn theo format \"HH:mm\" (AM/PM). Nếu chỉ có 1 giờ, endTime = startTime + 1 giờ\n" +
+                        "- startTime/endTime: Parse từ tin nhắn theo format \"h:mm AM/PM\" (1-12 AM/PM, không dùng 24h). Ví dụ: \"9:00 AM\", \"2:30 PM\". Nếu chỉ có 1 giờ, endTime = startTime + 1 giờ\n" +
                         "- date/month/year: Tính từ ngày hiện tại. \"Mai\" = hôm nay + 1 ngày, \"Thứ 7\" = tính đến thứ 7 tuần này\n" +
                         "  LƯU Ý: Năm hiện tại là " + currentYear + "\n" +
                         "- location: Extract từ tin nhắn HOẶC SỬ DỤNG {{facts}}/{{TARGET_PROFILE_WITH_RELATION}} để suggest địa điểm phù hợp với sở thích\n\n" +
                         "VÍ DỤ:\n" +
                         "- User: \"Mai 9h đưa bố đi bệnh viện\"\n" +
-                        "  → { \"title\": \"Đưa bố đi khám\", \"startTime\": \"09:00\", \"endTime\": \"10:00\", \"date\": 15, \"month\": 1, \"year\": " + currentYear + ", \"location\": \"Bệnh viện\" }\n\n" +
-                        "- User: \"Thứ 7 này đi ăn với gia đình\"\n" +
+                        "  → { \"title\": \"Đưa bố đi khám\", \"startTime\": \"9:00 AM\", \"endTime\": \"10:00 AM\", \"date\": 15, \"month\": 1, \"year\": " + currentYear + ", \"location\": \"Bệnh viện\" }\n\n" +
+                        "- User: \"Thứ 7 này 6h tối đi ăn với gia đình\"\n" +
                         "  {{facts}}: \"Bố thích ăn hải sản\"\n" +
-                        "  → { \"title\": \"Ăn tối cùng gia đình\", \"startTime\": \"18:00\", \"endTime\": \"20:00\", \"date\": 18, \"month\": 1, \"year\": " + currentYear + ", \"location\": \"Nhà hàng hải sản\" }\n\n" +
+                        "  → { \"title\": \"Ăn tối cùng gia đình\", \"startTime\": \"6:00 PM\", \"endTime\": \"8:00 PM\", \"date\": 18, \"month\": 1, \"year\": " + currentYear + ", \"location\": \"Nhà hàng hải sản\" }\n\n" +
                         "VALIDATION:\n" +
                         "- startTime phải < endTime\n" +
                         "- date hợp lệ (1-31), month (1-12)\n" +
@@ -57,24 +57,28 @@ public class PromptService {
                 break;
             case "TASK":
                 instruction += "{ \"assigneeEmail\": string, \"title\": string, \"description\": string }\n\n" +
-                        "MỤC ĐÍCH: Tạo công việc chăm sóc cho thành viên cụ thể\n\n" +
+                        "MỤC ĐÍCH: Tạo công việc chăm sóc nhẹ nhàng cho thành viên cụ thể\n\n" +
                         "HƯỚNG DẪN EXTRACT:\n" +
                         "- assigneeEmail: Backend tự động inject (KHÔNG cần điền)\n" +
-                        "- title: Tóm tắt task ngắn gọn (ví dụ: \"Nhắc mẹ uống thuốc huyết áp\")\n" +
-                        "- description: Chi tiết task. SỬ DỤNG {{facts}} để làm phong phú:\n" +
-                        "  + Nếu {{facts}} có thông tin về thuốc/thời gian/liều lượng → thêm vào description\n" +
-                        "  + Nếu {{TARGET_PROFILE_WITH_RELATION}} có sở thích → gợi ý cách thực hiện phù hợp\n" +
-                        "  + Thêm lưu ý cụ thể để task dễ thực hiện hơn\n\n" +
+                        "- title: Công việc NHẸ NHÀNG, cụ thể, dễ thực hiện (ví dụ: \"Complete homework\", \"Uống nước ấm\", \"Đi dạo 15 phút\", \"Gọi điện cho mẹ\")\n" +
+                        "  * Tránh: Công việc nặng nề, mơ hồ, hoặc quá phức tạp\n" +
+                        "  * Ưu tiên: Hành động cụ thể, có thể hoàn thành trong 30 phút\n" +
+                        "- description: MỤC ĐÍCH + LÝ DO + NGỮ CẢNH. Cấu trúc:\n" +
+                        "  \"Tạo love task này cho gia đình bạn vì [TÊN USER HIỆN TẠI] [NGỮ CẢNH/LÝ DO]. [CHI TIẾT THÊM từ {{facts}} nếu có]\"\n" +
+                        "  * Ví dụ: \"Tạo love task này cho gia đình bạn vì Minh đang bận công việc và cần thư giãn. Một bước đi nhẹ nhàng sẽ giúp Minh giải tỏa căng thẳng.\"\n" +
+                        "  * Ví dụ: \"Tạo love task này cho gia đình bạn vì Hương vừa nói rằng cô ấy mệt mỏi. Uống nước ấm sẽ giúp cô ấy cảm thấy tốt hơn.\"\n\n" +
                         "VÍ DỤ:\n" +
-                        "- User: \"Nhắc mẹ uống thuốc\"\n" +
-                        "  {{facts}}: \"Mẹ uống thuốc huyết áp Amlodipine 5mg mỗi sáng 8h\"\n" +
-                        "  → { \"title\": \"Nhắc mẹ uống thuốc huyết áp\", \"description\": \"Nhắc mẹ uống Amlodipine 5mg vào 8h sáng. Nhớ kiểm tra xem mẹ đã ăn sáng chưa vì thuốc nên uống sau bữa ăn.\" }\n\n" +
-                        "- User: \"Cần mua vitamin cho con\"\n" +
-                        "  {{facts}}: \"Con hay bị cảm\"\n" +
-                        "  → { \"title\": \"Mua vitamin cho con\", \"description\": \"Mua vitamin C và D cho con để tăng cường sức đề kháng. Con hay bị cảm nên cần bổ sung đều đặn.\" }\n\n" +
+                        "- User: \"Hôm nay mệt quá\"\n" +
+                        "  → { \"title\": \"Uống nước ấm\", \"description\": \"Tạo love task này cho gia đình bạn vì bạn đang mệt mỏi. Uống nước ấm sẽ giúp bạn thư giãn và phục hồi năng lượng.\" }\n\n" +
+                        "- User: \"Stress công việc quá, không biết làm gì\"\n" +
+                        "  {{facts}}: \"Bạn thích nghe nhạc\"\n" +
+                        "  → { \"title\": \"Nghe nhạc yêu thích 15 phút\", \"description\": \"Tạo love task này cho gia đình bạn vì bạn đang stress công việc. Nghe nhạc yêu thích sẽ giúp bạn giải tỏa căng thẳng và tái tập trung.\" }\n\n" +
+                        "- User: \"Mẹ vừa nói mẹ đau lưng\"\n" +
+                        "  → { \"title\": \"Massage lưng cho mẹ\", \"description\": \"Tạo love task này cho gia đình bạn vì mẹ đang đau lưng. Một bàn tay nhẹ nhàng sẽ giúp mẹ cảm thấy thoải mái hơn.\" }\n\n" +
                         "VALIDATION:\n" +
-                        "- title không trống, ngắn gọn\n" +
-                        "- description phải cụ thể, actionable, có thể thực hiện ngay";
+                        "- title phải ngắn gọn, cụ thể, dễ thực hiện\n" +
+                        "- description phải có: LÝ DO (vì sao) + NGỮ CẢNH (người dùng đang như thế nào) + LỢI ÍCH (sẽ giúp gì)\n" +
+                        "- Không tạo task quá phức tạp hoặc mất thời gian";
                 break;
             case "OFFLINE":
                 instruction += "{ \"action\": string }\n\n" +
