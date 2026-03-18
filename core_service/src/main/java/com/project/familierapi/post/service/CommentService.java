@@ -1,5 +1,7 @@
 package com.project.familierapi.post.service;
 
+import com.project.familierapi.notification.domain.NotificationType;
+import com.project.familierapi.notification.service.NotificationService;
 import com.project.familierapi.post.domain.Comment;
 import com.project.familierapi.post.domain.Post;
 import com.project.familierapi.post.dto.CommentListResponse;
@@ -24,6 +26,7 @@ import java.util.stream.Collectors;
 public class CommentService {
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public CommentListResponse getComments(Integer postId, int page, int size) {
@@ -59,6 +62,14 @@ public class CommentService {
                 .build();
 
         comment = commentRepository.save(comment);
+        // AC-NT-02: notify post owner
+        if (!post.getUser().getId().equals(user.getId())) {
+            notificationService.createAndPush(
+                    post.getUser(), user, NotificationType.POST_COMMENT,
+                    user.getFullName() + " commented on your post",
+                    request.getContent().length() > 100 ? request.getContent().substring(0, 100) : request.getContent(),
+                    String.valueOf(post.getPostId()));
+        }
         return mapToCommentResponse(comment);
     }
 

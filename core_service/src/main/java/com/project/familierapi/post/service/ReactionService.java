@@ -1,5 +1,7 @@
 package com.project.familierapi.post.service;
 
+import com.project.familierapi.notification.domain.NotificationType;
+import com.project.familierapi.notification.service.NotificationService;
 import com.project.familierapi.post.domain.Post;
 import com.project.familierapi.post.domain.Reaction;
 import com.project.familierapi.post.domain.ReactionType;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReactionService {
     private final ReactionRepository reactionRepository;
     private final PostRepository postRepository;
+    private final NotificationService notificationService;
 
     @Transactional
     public ReactionResponse toggleReaction(Integer postId, User user, ReactionType reactionType) {
@@ -41,6 +44,14 @@ public class ReactionService {
                     .build();
             reactionRepository.save(reaction);
             int count = reactionRepository.countByPostPostId(postId);
+            // AC-NT-03: notify post owner
+            String postBody = post.getContent() != null && post.getContent().length() > 80
+                    ? post.getContent().substring(0, 80) : post.getContent();
+            notificationService.createAndPush(
+                    post.getUser(), user, NotificationType.POST_REACTION,
+                    user.getFullName() + " reacted to your post ❤️",
+                    postBody != null ? postBody : "",
+                    String.valueOf(postId));
             return ReactionResponse.builder()
                     .postId(postId)
                     .reacted(true)

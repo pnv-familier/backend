@@ -1,11 +1,14 @@
 package com.project.familierapi.lovetask.service;
 
 import com.project.familierapi.family.domain.FamilyMember;
+import com.project.familierapi.family.repository.FamilyMemberRepository;
 import com.project.familierapi.lovetask.domain.LoveTask;
 import com.project.familierapi.lovetask.domain.TaskStatus;
 import com.project.familierapi.lovetask.dto.*;
 import com.project.familierapi.lovetask.exception.TaskNotFoundException;
 import com.project.familierapi.lovetask.repository.LoveTaskRepository;
+import com.project.familierapi.notification.domain.NotificationType;
+import com.project.familierapi.notification.service.NotificationService;
 import com.project.familierapi.post.dto.CreatePostRequest;
 import com.project.familierapi.post.service.PostService;
 import com.project.familierapi.user.domain.User;
@@ -24,6 +27,8 @@ public class LoveTaskService {
     private final LoveTaskRepository taskRepository;
     private final UserRepository userRepository;
     private final PostService postService;
+    private final NotificationService notificationService;
+    private final FamilyMemberRepository familyMemberRepository;
 
     @Transactional
     public LoveTaskResponse createTask(User sender, CreateLoveTaskRequest request) {
@@ -46,6 +51,14 @@ public class LoveTaskService {
                 .build();
 
         LoveTask savedTask = taskRepository.save(task);
+
+        // Notify assignee when love task is created
+        notificationService.createAndPush(
+                assignee, sender, NotificationType.LOVE_TASK,
+                "New Love Task 💕",
+                sender.getFullName() + " sent you a love task: " + request.getTitle(),
+                String.valueOf(savedTask.getTaskId()));
+
         return mapToResponse(savedTask, assignee);
     }
 
@@ -136,6 +149,26 @@ public class LoveTaskService {
         task.setStatus(TaskStatus.COMPLETED);
         task.setCompletedAt(LocalDateTime.now());
         LoveTask updatedTask = taskRepository.save(task);
+
+        // AC-NT-09: notify sender when task is completed
+        notificationService.createAndPush(
+                task.getSender(), user, NotificationType.LOVE_TASK,
+                "Love Task Completed ✅",
+                user.getFullName() + " completed your love task: " + task.getTitle(),
+                String.valueOf(task.getTaskId()));
+
+        // Also notify other family members
+        if (user.getFamily() != null) {
+            familyMemberRepository.findByFamilyIdOrderByJoinedAt(user.getFamily().getFamily().getId())
+                    .stream()
+                    .map(FamilyMember::getUser)
+                    .filter(u -> !u.getId().equals(user.getId()) && !u.getId().equals(task.getSender().getId()))
+                    .forEach(u -> notificationService.createAndPush(
+                            u, user, NotificationType.LOVE_TASK,
+                            "Love Task Completed ✅",
+                            user.getFullName() + " completed a love task: " + task.getTitle(),
+                            String.valueOf(task.getTaskId())));
+        }
 
         return mapToResponse(updatedTask, user);
     }
