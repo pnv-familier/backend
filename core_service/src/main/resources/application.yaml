@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: familier-api
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  security:
+    user:
+      name: ${APP_ADMIN_USER}
+      password: ${APP_ADMIN_PASS}
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+server:
+  port: ${CORE_SERVICE_PORT:8081}
+grpc:
+  server:
+    port: ${GRPC_SERVER_PORT:9090}
+    security:
+      enabled: false
+
+application:
+  security:
+    jwt:
+      secret-key: ${JWT_SECRET}
+      access-token-expiration: 3600000
+      refresh-token-expiration: 604800000
+    internal:
+      secret: ${INTERNAL_SHARED_SECRET:default_internal_secret}
+    oauth2:
+      google:
+        client-id: ${PUBLIC_GOOGLE_CLIENT_ID}
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}

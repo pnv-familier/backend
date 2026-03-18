@@ -1,0 +1,64 @@
+name: CI Integration Health Check For Gateway Service
+
+on:
+  pull_request:
+    branches: [ "main", "dev" ]
+    paths:
+      - 'gateway/**'
+      - 'pom.xml'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+          working-directory: gateway
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      - name: Run Spring Boot app (skip tests)
+        env:
+          SPRING_PROFILES_ACTIVE: dev
+          GATEWAY_PORT: 8080
+
+        run: |
+          nohup mvn spring-boot:run -DskipTests > app.log 2>&1 &
+          echo $! > app.pid
+
+      - name: Wait for app to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/actuator/health | grep -q "UP"; then
+              echo "App is UP!"
+              exit 0
+            fi
+            echo "Waiting for app..."
+            sleep 5
+          done
+          echo "App did not become healthy in time"
+          cat app.log
+          exit 1
+
+      - name: Stop application
+        if: always()
+        run: |
+          if [ -f app.pid ]; then
+            kill $(cat app.pid) || true
+          fi

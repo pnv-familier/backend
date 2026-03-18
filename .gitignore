@@ -1,36 +1,67 @@
-HELP.md
+############################
+# Maven / Build
+############################
 target/
+**/target/
+
+build/
+**/build/
+
 .mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
+############################
+# Logs
+############################
+*.log
 
-### IntelliJ IDEA ###
-.idea
+############################
+# Environment files
+############################
+.env
+.env.*
+*.local
+
+############################
+# IDE - IntelliJ
+############################
+.idea/
 *.iws
 *.iml
 *.ipr
 
-### NetBeans ###
+############################
+# IDE - STS / Eclipse
+############################
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache/
+
+############################
+# IDE - NetBeans
+############################
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### VS Code ###
+############################
+# IDE - VS Code
+############################
 .vscode/
 
-.env
+############################
+# OS files
+############################
+.DS_Store
+Thumbs.db
+
+############################
+# Misc
+############################
+HELP.md
 **/guide.txt

@@ -1,0 +1,93 @@
+name: CI Integration Health Check For AI Service
+
+on:
+  pull_request:
+    branches: [ "main", "dev" ]
+    paths:
+      - 'ai_service/**'
+      - 'pom.xml'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+          working-directory: ai_service
+
+    services:
+      mongo:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >
+          --health-cmd="mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7.0
+        ports:
+          - 6379:6379
+        options: >
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      - name: Run Spring Boot app (skip tests)
+        env:
+          SPRING_PROFILES_ACTIVE: dev
+          MANAGEMENT_HEALTH_GRPC_ENABLED: false
+          AI_SERVICE_PORT: 8080
+          GEMINI_API_KEY: test_gemini_key
+          MONGODB_URI: mongodb://localhost:27017/ai_service_test
+          SPRING_DATA_REDIS_HOST: localhost
+          SPRING_DATA_REDIS_PORT: 6379
+          CORE_SERVICE_URL: http://localhost:8081
+          INTERNAL_SHARED_SECRET: test_secret
+
+        run: |
+          nohup mvn spring-boot:run -DskipTests > app.log 2>&1 &
+          echo $! > app.pid
+
+      - name: Wait for app to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/actuator/health | grep -q "UP"; then
+              echo "App is UP!"
+              exit 0
+            fi
+            echo "Waiting for app... (attempt $i/30)"
+            sleep 5
+          done
+          echo "App did not become healthy in time"
+          echo "=== Full Application Log ==="
+          cat app.log
+          echo "=== End of Log ==="
+          exit 1
+
+      - name: Stop application
+        if: always()
+        run: |
+          if [ -f app.pid ]; then
+            kill $(cat app.pid) || true
+          fi
