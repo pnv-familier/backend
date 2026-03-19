@@ -1,6 +1,7 @@
 package com.familier.ai.exception;
 
 import com.familier.ai.dto.ErrorResponse;
+import com.familier.ai.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -9,6 +10,7 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import reactor.core.publisher.Mono;
+import org.springframework.web.bind.support.WebExchangeBindException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -24,8 +26,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public Mono<ResponseEntity<ErrorResponse>> handleIllegalArgument(IllegalArgumentException ex, ServerHttpRequest request) {
-        // Log at INFO or DEBUG if needed, but the requirement says "không log ERROR để tiết kiệm tài nguyên"
         ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getURI().getPath());
+        return Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse));
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public Mono<ResponseEntity<ErrorResponse>> handleNotFound(ResourceNotFoundException ex, ServerHttpRequest request) {
+        ErrorResponse errorResponse = new ErrorResponse(ex.getMessage(), request.getURI().getPath());
+        return Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse));
+    }
+
+    @ExceptionHandler(WebExchangeBindException.class)
+    public Mono<ResponseEntity<ErrorResponse>> handleValidation(WebExchangeBindException ex, ServerHttpRequest request) {
+        String message = ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fe.getField() + " " + fe.getDefaultMessage())
+                .findFirst().orElse("Validation failed");
+        ErrorResponse errorResponse = new ErrorResponse(message, request.getURI().getPath());
         return Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse));
     }
 }
