@@ -38,7 +38,7 @@ spring:
         - id: core_service_public_route
           uri: ${CORE_SERVICE_URL}
           predicates:
-            - Path=/api/v1/auth/**, /swagger-ui/**, /swagger-ui.html, /v3/api-docs/**
+            - Path=/api/v1/auth/**, /api/v1/admin/login, /swagger-ui/**, /swagger-ui.html, /v3/api-docs/**
           filters:
             - name: Retry
               args:

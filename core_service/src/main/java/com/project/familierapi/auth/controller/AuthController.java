@@ -44,6 +44,13 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/admin/login")
+    public ResponseEntity<SuccessResponse<AuthResponse>> adminLogin(@Valid @RequestBody LoginRequest loginRequest) {
+        AuthResponse authResponse = authService.loginAsAdmin(loginRequest.getEmail(), loginRequest.getPassword());
+        SuccessResponse<AuthResponse> response = new SuccessResponse<>("Admin logged in successfully", authResponse);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/auth/refresh-token")
     public void refreshToken(
             HttpServletRequest request,

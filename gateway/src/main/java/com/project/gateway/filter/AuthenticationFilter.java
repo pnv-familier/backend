@@ -18,10 +18,16 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
     public GatewayFilter apply(Config config) {
         return (exchange, chain) -> ReactiveSecurityContextHolder.getContext()
                 .filter(c -> c.getAuthentication() != null && c.getAuthentication().isAuthenticated())
-                .map(c -> c.getAuthentication().getPrincipal().toString())
-                .flatMap(username -> {
+                .map(c -> c.getAuthentication())
+                .flatMap(auth -> {
+                    String username = auth.getPrincipal().toString();
+                    String role = auth.getAuthorities().stream()
+                            .findFirst()
+                            .map(a -> a.getAuthority())
+                            .orElse("");
                     ServerHttpRequest request = exchange.getRequest().mutate()
                             .header("X-User-Email", username)
+                            .header("X-User-Role", role)
                             .build();
                     return chain.filter(exchange.mutate().request(request).build());
                 })

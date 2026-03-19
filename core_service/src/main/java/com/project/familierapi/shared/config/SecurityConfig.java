@@ -23,8 +23,9 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/ai/**").permitAll()
-                        .anyRequest().permitAll()
+                        .requestMatchers("/ai/**", "/api/v1/auth/**", "/api/v1/admin/login", "/actuator/health").permitAll()
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(internalTrustFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
