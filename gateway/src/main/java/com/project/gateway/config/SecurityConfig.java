@@ -13,17 +13,16 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.authentication.AuthenticationWebFilter;
 import org.springframework.security.web.server.authentication.ServerAuthenticationConverter;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.reactive.CorsWebFilter;
-import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import reactor.core.publisher.Mono;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 @Configuration
 @EnableWebFluxSecurity
@@ -35,31 +34,19 @@ public class SecurityConfig {
     private JwtUtil jwtUtil;
 
     @Bean
-    public CorsWebFilter corsWebFilter() {
-        CorsConfiguration corsConfig = new CorsConfiguration();
-        corsConfig.setAllowedOrigins(Collections.singletonList("*"));
-        corsConfig.setMaxAge(3600L);
-        corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        corsConfig.setAllowedHeaders(Arrays.asList("Content-Type", "Authorization", "X-User-Email", "X-Internal-Secret"));
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", corsConfig);
-        return new CorsWebFilter(source);
-    }
-
-    @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .cors(cors -> cors.configurationSource(exchange -> {
                     CorsConfiguration config = new CorsConfiguration();
-                    config.setAllowedOrigins(Collections.singletonList("*"));
+                    config.setAllowedOriginPatterns(Collections.singletonList("*"));
                     config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
                     config.setAllowedHeaders(Arrays.asList("Content-Type", "Authorization", "X-User-Email", "X-Internal-Secret"));
                     return config;
                 }))
                 .authorizeExchange(exchange -> exchange
-                        .pathMatchers("/api/v1/auth/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/**", "/ai/actuator/**", "/core/actuator/**").permitAll()
+                        .pathMatchers("/api/v1/auth/**", "/api/v1/admin/login", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/**", "/ai/actuator/**", "/core/actuator/**").permitAll()
+                        .pathMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyExchange().authenticated()
                 )
 
@@ -81,8 +68,12 @@ public class SecurityConfig {
             String token = (String) authentication.getCredentials();
             if (jwtUtil.validateToken(token)) {
                 String username = jwtUtil.extractUsername(token);
+                String role = jwtUtil.extractRole(token);
                 if (username != null) {
-                    return Mono.just(new UsernamePasswordAuthenticationToken(username, token, new ArrayList<>()));
+                    var authorities = role != null
+                            ? List.of(new SimpleGrantedAuthority(role))
+                            : List.<SimpleGrantedAuthority>of();
+                    return Mono.just(new UsernamePasswordAuthenticationToken(username, token, authorities));
                 }
                 logger.error("Authentication failed: Could not extract username from valid token");
             } else {
