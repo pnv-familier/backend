@@ -4,7 +4,7 @@ import com.project.familierapi.notification.domain.NotificationType;
 import lombok.Builder;
 import lombok.Data;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -15,5 +15,5 @@ public class NotificationResponse {
     private String body;
     private String referenceId;
     private boolean isRead;
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 }

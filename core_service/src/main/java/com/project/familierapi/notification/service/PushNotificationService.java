@@ -3,8 +3,9 @@ package com.project.familierapi.notification.service;
 import com.project.familierapi.notification.repository.PushTokenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestClient;
 
 import java.util.List;
 import java.util.Map;
@@ -16,9 +17,10 @@ import java.util.stream.Collectors;
 public class PushNotificationService {
 
     private final PushTokenRepository pushTokenRepository;
-    private final WebClient.Builder webClientBuilder;
+    private final RestClient restClient = RestClient.create();
 
-    private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+    @Value("${expo.push-url}")
+    private String expoPushUrl;
 
     public void sendToUser(String userId, String title, String body, String type, String referenceId) {
         List<String> tokens = pushTokenRepository.findByUserId(userId)
@@ -45,14 +47,16 @@ public class PushNotificationService {
                 "sound", "default"
         )).collect(Collectors.toList());
 
-        webClientBuilder.build()
-                .post()
-                .uri(EXPO_PUSH_URL)
-                .bodyValue(messages)
-                .retrieve()
-                .bodyToMono(Map.class)
-                .doOnError(e -> log.error("Failed to send push notification: {}", e.getMessage()))
-                .subscribe(response -> handleExpoPushResponse(response, tokens));
+        try {
+            Map<?, ?> response = restClient.post()
+                    .uri(expoPushUrl)
+                    .body(messages)
+                    .retrieve()
+                    .body(Map.class);
+            handleExpoPushResponse(response, tokens);
+        } catch (Exception e) {
+            log.error("Failed to send push notification: {}", e.getMessage());
+        }
     }
 
     @SuppressWarnings("unchecked")
