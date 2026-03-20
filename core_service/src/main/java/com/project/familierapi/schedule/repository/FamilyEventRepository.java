@@ -13,4 +13,6 @@ public interface FamilyEventRepository extends JpaRepository<FamilyEvent, Intege
             String familyId, LocalDateTime startDate, LocalDateTime endDate);
     
     List<FamilyEvent> findByFamilyIdOrderByStartTimeAsc(String familyId);
+
+    List<FamilyEvent> findByStartTimeBetween(LocalDateTime from, LocalDateTime to);
 }
