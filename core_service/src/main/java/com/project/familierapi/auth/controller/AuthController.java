@@ -44,11 +44,6 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/admin/register")
-    public ResponseEntity<SuccessResponse<AuthResponse>> createAdmin(@Valid @RequestBody RegisterRequestDto dto) {
-        return ResponseEntity.ok(new SuccessResponse<>("Admin created successfully", authService.createAdmin(dto)));
-    }
-
     @PostMapping("/admin/login")
     public ResponseEntity<SuccessResponse<AuthResponse>> adminLogin(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse authResponse = authService.loginAsAdmin(loginRequest.getEmail(), loginRequest.getPassword());

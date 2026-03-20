@@ -98,20 +98,6 @@ public class AuthService {
         return createAuthResponse(user);
     }
 
-    public AuthResponse createAdmin(RegisterRequestDto dto) {
-        userRepository.findByEmail(dto.email()).ifPresent(u -> { throw new EmailAlreadyExistsException(); });
-        User user = User.builder()
-                .id(UUID.randomUUID().toString())
-                .fullName(dto.fullName())
-                .email(dto.email())
-                .passwordHash(passwordEncoder.encode(dto.password()))
-                .authProvider(AuthProvider.LOCAL)
-                .role(Role.ADMIN)
-                .isPremium(false)
-                .build();
-        return createAuthResponse(userRepository.save(user));
-    }
-
     public AuthResponse loginAsAdmin(String email, String password) {
         var possibleUser = this.userRepository.findByEmail(email);
         if (possibleUser.isEmpty()) {
