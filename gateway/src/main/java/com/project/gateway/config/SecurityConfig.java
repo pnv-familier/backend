@@ -46,7 +46,7 @@ public class SecurityConfig {
                 }))
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers("/api/v1/auth/**", "/api/v1/admin/login", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/**", "/ai/actuator/**", "/core/actuator/**").permitAll()
-                        .pathMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .pathMatchers("/api/v1/admin/**", "/ai/api/v1/admin/**").hasRole("ADMIN")
                         .anyExchange().authenticated()
                 )
 
