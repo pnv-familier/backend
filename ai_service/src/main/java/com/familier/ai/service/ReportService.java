@@ -1,5 +1,6 @@
 package com.familier.ai.service;
 
+import com.familier.ai.dto.FeedbackRequest;
 import com.familier.ai.dto.ReportRequest;
 import com.familier.ai.entity.Report;
 import com.familier.ai.repository.ReportRepository;
@@ -18,6 +19,16 @@ public class ReportService {
     public Mono<Report> createReport(ReportRequest request, String reporterEmail) {
         return reportRepository.save(
                 Report.builder()
+                        .reason(request.getReason())
+                        .reporterEmail(reporterEmail)
+                        .reportedAt(Instant.now())
+                        .build());
+    }
+
+    public Mono<Report> processFeedback(FeedbackRequest request, String reporterEmail) {
+        return reportRepository.save(
+                Report.builder()
+                        .type(request.getType())
                         .reason(request.getReason())
                         .reporterEmail(reporterEmail)
                         .reportedAt(Instant.now())

@@ -2,6 +2,8 @@ package com.familier.ai.controller;
 
 import com.familier.ai.dto.ChatMessageDto;
 import com.familier.ai.dto.FamilyMembersDto;
+import com.familier.ai.dto.FeedbackRequest;
+import com.familier.ai.service.ReportService;
 import com.familier.ai.entity.ChatMessage;
 import com.familier.ai.entity.ChatSession;
 import com.familier.ai.entity.Sender;
@@ -21,10 +23,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import com.familier.ai.entity.Report;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -46,6 +51,7 @@ public class AiController {
     private final ContextManagerService contextManagerService;
     private final SummarizationScheduler summarizationScheduler;
     private final SuggestionService suggestionService;
+    private final ReportService reportService;
     private final WebClient.Builder webClientBuilder;
     private final String coreServiceUrl;
     private final String internalSecret;
@@ -63,6 +69,7 @@ public class AiController {
             SummarizationScheduler summarizationScheduler,
             ContextManagerService contextManagerService,
             SuggestionService suggestionService,
+            ReportService reportService,
             WebClient.Builder webClientBuilder,
             @Value("${CORE_SERVICE_URL}") String coreServiceUrl,
             @Value("${application.security.internal.secret}") String internalSecret) {
@@ -73,6 +80,7 @@ public class AiController {
         this.summarizationScheduler = summarizationScheduler;
         this.contextManagerService = contextManagerService;
         this.suggestionService = suggestionService;
+        this.reportService = reportService;
         this.webClientBuilder = webClientBuilder;
         this.coreServiceUrl = coreServiceUrl;
         this.internalSecret = internalSecret;
@@ -551,6 +559,15 @@ public class AiController {
                     },
                     error -> log.error("Failed to fetch family members: {}", error.getMessage())
                 );
+    }
+
+    @PostMapping("/feedback")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono<ResponseEntity<Report>> processFeedback(
+            @Valid @RequestBody FeedbackRequest request,
+            @RequestHeader("X-User-Email") String email) {
+        return reportService.processFeedback(request, email)
+                .map(report -> ResponseEntity.status(HttpStatus.CREATED).body(report));
     }
 
     @GetMapping("/sessions")
