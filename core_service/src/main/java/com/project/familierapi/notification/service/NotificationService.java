@@ -103,6 +103,7 @@ public class NotificationService {
                 .body(n.getBody())
                 .referenceId(n.getReferenceId())
                 .isRead(n.isRead())
+                .status(n.isRead() ? "READ" : "UNREAD")
                 .createdAt(n.getCreatedAt())
                 .build();
     }
