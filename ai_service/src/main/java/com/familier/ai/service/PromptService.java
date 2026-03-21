@@ -40,7 +40,7 @@ public class PromptService {
                         "MỤC ĐÍCH: Tạo sự kiện có thời gian và địa điểm cụ thể\n\n" +
                         "HƯỚNG DẪN EXTRACT:\n" +
                         "- title: Tóm tắt sự kiện từ tin nhắn (ví dụ: \"Đưa bố đi khám\")\n" +
-                        "- startTime/endTime: Parse từ tin nhắn theo format \"h:mm AM/PM\" (1-12 AM/PM, không dùng 24h). Ví dụ: \"9:00 AM\", \"2:30 PM\". Nếu chỉ có 1 giờ, endTime = startTime + 1 giờ\n" +
+                        "- startTime/endTime: Parse từ tin nhắn theo format \"h:mm \" (1-12 AM/PM, không dùng 24h). Ví dụ: \"9:00 AM\", \"2:30 PM\". Nếu chỉ có 1 giờ, endTime = startTime + 1 giờ\n" +
                         "- date/month/year: Tính từ ngày hiện tại. \"Mai\" = hôm nay + 1 ngày, \"Thứ 7\" = tính đến thứ 7 tuần này\n" +
                         "  LƯU Ý: Năm hiện tại là " + currentYear + "\n" +
                         "- location: Extract từ tin nhắn HOẶC SỬ DỤNG {{facts}}/{{TARGET_PROFILE_WITH_RELATION}} để suggest địa điểm phù hợp với sở thích\n\n" +

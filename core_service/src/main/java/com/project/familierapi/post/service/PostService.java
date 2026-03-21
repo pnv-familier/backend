@@ -89,7 +89,7 @@ public class PostService {
                 .reactionCount(reactionCount)
                 .commentCount(commentCount)
                 .hasMore(hasMore)
-                .isReacted(userReaction.isPresent())
+                .userReacted(userReaction.isPresent())
                 .reactionType(userReaction.map(r -> r.getReactionType().name()).orElse(null))
                 .build();
     }
