@@ -32,7 +32,11 @@ public class UnifiedDetectionService {
             2. SUGGESTION DETECTION - Tin nhắn có chứa ý định cần hành động không?
             - EVENT: Nhắc đến thời gian cụ thể (HH:mm), ngày tháng, sự kiện, địa điểm
             - TASK: Nhắc đến chăm sóc, sức khỏe, công việc cho thành viên cụ thể
-            - OFFLINE: Thể hiện cảm xúc mạnh (stress, buồn) hoặc cần kết nối cá nhân
+            - OFFLINE: Thể hiện cảm xúc mạnh (stress, buồn, cô đơn, mệt mỏi) hoặc cần kết nối cá nhân
+            
+            QUY TẮC ĐẶC BIỆT:
+            - Nếu tin nhắn có từ: 'đề xuất', 'gợi ý', 'tạo lịch', 'nhắc mình' -> suggestion.confidence = 1.0
+            - Nếu phát hiện cảm xúc (buồn, stress, mệt mỏi, ...) cho loại 'OFFLINE' -> suggestion.confidence >= 0.5
             
             Trả về JSON:
             {
@@ -50,7 +54,7 @@ public class UnifiedDetectionService {
             
             Lưu ý:
             - Chỉ trả về hasMention=true nếu confidence >= 0.7
-            - Chỉ trả về hasSuggestion=true nếu confidence >= 0.6
+            - Chỉ trả về hasSuggestion=true nếu: (type != 'OFFLINE' và confidence >= 0.6) HOẶC (type == 'OFFLINE' và confidence >= 0.5)
             - Phân loại type phải nghiêm ngặt
             
             Tin nhắn: "{message}"
@@ -83,14 +87,15 @@ public class UnifiedDetectionService {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
-                .map(this::parseUnifiedResponse)
+                .timeout(java.time.Duration.ofSeconds(20))
+                .map(response -> parseUnifiedResponse(response, message))
                 .doOnNext(result -> log.info("Detection result: mention={}, suggestion={}", 
                         result.getMention().isHasMention(), result.getSuggestion().isHasSuggestion()))
                 .onErrorReturn(createDefaultResult())
                 .doOnError(e -> log.error("Error in unified detection", e));
     }
 
-    private UnifiedDetectionResult parseUnifiedResponse(Map<String, Object> response) {
+    private UnifiedDetectionResult parseUnifiedResponse(Map<String, Object> response, String originalMessage) {
         try {
             List<?> candidates = (List<?>) response.get("candidates");
             if (candidates == null || candidates.isEmpty()) {
@@ -133,14 +138,25 @@ public class UnifiedDetectionService {
 
             // Parse suggestion
             JsonNode suggestionNode = root.get("suggestion");
+            String type = suggestionNode.has("type") && !suggestionNode.get("type").isNull() 
+                    ? suggestionNode.get("type").asText() : null;
+            double confidence = suggestionNode.has("confidence") ? suggestionNode.get("confidence").asDouble() : 0.0;
+
+            // Apply priority rules for keywords
+            String lowerMessage = originalMessage.toLowerCase();
+            if (lowerMessage.contains("đề xuất") || lowerMessage.contains("gợi ý") 
+                    || lowerMessage.contains("tạo lịch") || lowerMessage.contains("nhắc mình")) {
+                confidence = 1.0;
+            }
+
             UnifiedDetectionResult.SuggestionDetection suggestion = UnifiedDetectionResult.SuggestionDetection.builder()
                     .hasSuggestion(suggestionNode.has("hasSuggestion") && suggestionNode.get("hasSuggestion").asBoolean())
-                    .type(suggestionNode.has("type") && !suggestionNode.get("type").isNull() 
-                            ? suggestionNode.get("type").asText() : null)
-                    .confidence(suggestionNode.has("confidence") ? suggestionNode.get("confidence").asDouble() : 0.0)
+                    .type(type)
+                    .confidence(confidence)
                     .build();
 
-            if (suggestion.getConfidence() < 0.6) {
+            double threshold = "OFFLINE".equals(type) ? 0.5 : 0.6;
+            if (suggestion.getConfidence() < threshold) {
                 suggestion.setHasSuggestion(false);
                 suggestion.setType(null);
             }

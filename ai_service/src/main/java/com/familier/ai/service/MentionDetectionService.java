@@ -24,32 +24,22 @@ public class MentionDetectionService {
     private String API_KEY;
 
     private static final String DETECTION_PROMPT = """
-            Phân tích tin nhắn sau và xác định xem người dùng có nhắc đến thành viên gia đình nào không.
-            
-            Các mối quan hệ có thể có:
-            - FATHER (bố, ba, cha, thầy)
-            - MOTHER (mẹ, má, mạ)
-            - SON (con trai, thằng con, cậu con trai)
-            - DAUGHTER (con gái, cô con gái, bé con gái)
-            - BROTHER (anh trai, em trai, anh, em)
-            - SISTER (chị gái, em gái, chị, em)
-            - GRANDFATHER (ông, ông nội, ông ngoại)
-            - GRANDMOTHER (bà, bà nội, bà ngoại)
-            - SPOUSE (vợ, chồng, người yêu)
-            
-            Trả về JSON với format:
+            Phân tích tin nhắn để phát hiện nhắc đến người thân (Target) hoặc nhu cầu cần hỗ trợ.
+            - Mối quan hệ: FATHER, MOTHER, SON, DAUGHTER, BROTHER, SISTER, GRANDFATHER, GRANDMOTHER, SPOUSE.
+            - Intent: EVENT (Lịch trình), TASK (Chăm sóc), OFFLINE (Gặp mặt).
+
+            Quy tắc linh hoạt:
+            1. Chỉ cần nhắc đến đối tượng + một hành động/trạng thái (mệt, đau, đi chơi, về quê) là đủ để set hasMention=true.
+            2. Nếu người dùng nói "mình", "tôi" kèm cảm xúc tiêu cực -> targetRelation=SPOUSE hoặc null nhưng vẫn kích hoạt gợi ý kết nối.
+
+            Trả về JSON:
             {
-              "hasMention": true/false,
-              "targetRelation": "FATHER" hoặc null,
+              "hasMention": boolean,
+              "targetRelation": string|null,
               "confidence": 0.0-1.0,
-              "reasoning": "Giải thích ngắn gọn"
+              "reasoning": "Tại sao detect hành động này?"
             }
-            
-            Lưu ý:
-            - Chỉ trả về hasMention=true nếu confidence >= 0.7
-            - Nếu không chắc chắn, trả về confidence thấp
-            - Nếu chỉ hỏi chung chung không rõ người, trả về confidence thấp
-            
+
             Tin nhắn: "{message}"
             """;
 

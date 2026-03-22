@@ -4,6 +4,7 @@ import com.project.familierapi.family.domain.FamilyMember;
 import com.project.familierapi.post.domain.Post;
 import com.project.familierapi.post.domain.PostImage;
 import com.project.familierapi.post.domain.PostVideo;
+import com.project.familierapi.post.domain.Reaction;
 import com.project.familierapi.post.dto.CreatePostRequest;
 import com.project.familierapi.post.dto.FeedResponse;
 import com.project.familierapi.post.dto.PostDetailResponse;
@@ -19,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -41,9 +44,27 @@ public class PostService {
 
         String familyId = familyMember.getFamily().getId();
         List<Post> posts = postRepository.findByFamilyIdOrderByCreatedAtDesc(familyId);
+        
+        List<Integer> postIds = posts.stream().map(Post::getPostId).collect(Collectors.toList());
+        
+        // Batch fetch reaction counts
+        Map<Integer, Long> countsMap = reactionRepository.countByPostPostIdIn(postIds).stream()
+                .collect(Collectors.toMap(
+                        obj -> (Integer) obj[0],
+                        obj -> (Long) obj[1]
+                ));
+
+        // Batch fetch user reactions
+        Map<Integer, Reaction> userReactionsMap = reactionRepository.findByPostPostIdInAndUserId(postIds, user.getId()).stream()
+                .collect(Collectors.toMap(
+                        r -> r.getPost().getPostId(),
+                        r -> r
+                ));
 
         List<PostResponse> postResponses = posts.stream()
-                .map(post -> mapToPostResponse(post, user))
+                .map(post -> mapToPostResponse(post, user, 
+                        countsMap.getOrDefault(post.getPostId(), 0L).intValue(),
+                        Optional.ofNullable(userReactionsMap.get(post.getPostId()))))
                 .collect(Collectors.toList());
 
         return FeedResponse.builder()
@@ -52,7 +73,7 @@ public class PostService {
                 .build();
     }
 
-    private PostResponse mapToPostResponse(Post post, User currentUser) {
+    private PostResponse mapToPostResponse(Post post, User currentUser, int reactionCount, Optional<Reaction> userReaction) {
         String content = post.getContent();
         boolean hasMore = content != null && content.length() > PREVIEW_LIMIT;
 
@@ -70,10 +91,7 @@ public class PostService {
                     .collect(Collectors.toList())
                 : List.of();
 
-        int reactionCount = reactionRepository.countByPostPostId(post.getPostId());
         int commentCount = post.getComments() != null ? post.getComments().size() : 0;
-
-        var userReaction = reactionRepository.findByPostPostIdAndUserId(post.getPostId(), currentUser.getId());
 
         return PostResponse.builder()
                 .postId(post.getPostId())
@@ -92,6 +110,12 @@ public class PostService {
                 .userReacted(userReaction.isPresent())
                 .reactionType(userReaction.map(r -> r.getReactionType().name()).orElse(null))
                 .build();
+    }
+
+    private PostResponse mapToPostResponse(Post post, User currentUser) {
+        int reactionCount = reactionRepository.countByPostPostId(post.getPostId());
+        var userReaction = reactionRepository.findByPostPostIdAndUserId(post.getPostId(), currentUser.getId());
+        return mapToPostResponse(post, currentUser, reactionCount, userReaction);
     }
 
     @Transactional
