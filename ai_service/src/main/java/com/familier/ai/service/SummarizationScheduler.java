@@ -1,50 +1,30 @@
 package com.familier.ai.service;
 
-import com.familier.ai.repository.ChatSessionRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-
 @Service
 @Slf4j
 public class SummarizationScheduler {
 
-    private final ChatSessionRepository chatSessionRepository;
     private final SummarizationService summarizationService;
 
-    @Value("${scheduler.summarization.fixed-delay:900000}")
-    private long schedulerFixedDelay;
+    @Value("${app.summarization.enabled:false}")
+    private boolean enabled;
 
-    public SummarizationScheduler(ChatSessionRepository chatSessionRepository,
-                                  SummarizationService summarizationService) {
-        this.chatSessionRepository = chatSessionRepository;
+    public SummarizationScheduler(SummarizationService summarizationService) {
         this.summarizationService = summarizationService;
     }
 
-    @Scheduled(fixedDelayString = "${scheduler.summarization.fixed-delay:960000}")
+    @Scheduled(fixedDelayString = "${scheduler.summarization.fixed-delay:1800000}")
     public void summarizeOldActiveSessions() {
-        log.info("Starting scheduled summarization task");
-        
-        Instant duration = Instant.now().minusSeconds(17 * 60);
+        if (!enabled) {
+            return;
+        }
 
-        chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", 
-                duration)
-                .flatMap(session -> {
-                    log.info("Summarizing session: {} for user: {}", session.getId(), session.getUserEmail());
-                    return summarizationService.summarizeSession(session.getId(), session.getUserEmail())
-                            .onErrorResume(e -> {
-                                log.error("Failed to summarize session {}: {}", session.getId(), e.getMessage());
-                                return reactor.core.publisher.Mono.empty();
-                            });
-                })
-                .then()
-                .subscribe(
-                    unused -> {},
-                    error -> log.error("Error during scheduled summarization: {}", error.getMessage()),
-                    () -> log.info("Scheduled summarization task completed")
-                );
+        log.info("Starting scheduled summarization task");
+        summarizationService.summarizeAllOldActiveSessions();
     }
 }

@@ -37,6 +37,8 @@ public class AuthService {
     private final TokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final ObjectMapper objectMapper;
+
 
     @Value("${application.security.oauth2.google.client-id}")
     private String googleClientId;
@@ -183,7 +185,7 @@ public class AuthService {
                 revokeAllUserTokens(user);
                 saveUserToken(user, accessToken);
                 var authResponse = new AuthResponse(accessToken, refreshToken, toUserDto(user));
-                new ObjectMapper().writeValue(response.getOutputStream(), authResponse);
+                objectMapper.writeValue(response.getOutputStream(), authResponse);
             }
         }
     }

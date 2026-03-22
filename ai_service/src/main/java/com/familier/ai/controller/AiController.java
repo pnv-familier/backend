@@ -15,6 +15,8 @@ import com.familier.ai.service.GeminiService;
 import com.familier.ai.service.PromptService;
 import com.familier.ai.service.SuggestionService;
 import com.familier.ai.service.SummarizationScheduler;
+import com.familier.ai.service.SummarizationService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,9 +52,11 @@ public class AiController {
     private final ChatMessageRepository chatMessageRepository;
     private final ContextManagerService contextManagerService;
     private final SummarizationScheduler summarizationScheduler;
+    private final SummarizationService summarizationService;
     private final SuggestionService suggestionService;
     private final ReportService reportService;
     private final WebClient.Builder webClientBuilder;
+    private final ObjectMapper objectMapper;
     private final String coreServiceUrl;
     private final String internalSecret;
 
@@ -67,10 +71,12 @@ public class AiController {
             ChatSessionRepository chatSessionRepository,
             ChatMessageRepository chatMessageRepository,
             SummarizationScheduler summarizationScheduler,
+            SummarizationService summarizationService,
             ContextManagerService contextManagerService,
             SuggestionService suggestionService,
             ReportService reportService,
             WebClient.Builder webClientBuilder,
+            ObjectMapper objectMapper,
             @Value("${CORE_SERVICE_URL}") String coreServiceUrl,
             @Value("${application.security.internal.secret}") String internalSecret) {
         this.geminiService = geminiService;
@@ -78,10 +84,12 @@ public class AiController {
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.summarizationScheduler = summarizationScheduler;
+        this.summarizationService = summarizationService;
         this.contextManagerService = contextManagerService;
         this.suggestionService = suggestionService;
         this.reportService = reportService;
         this.webClientBuilder = webClientBuilder;
+        this.objectMapper = objectMapper;
         this.coreServiceUrl = coreServiceUrl;
         this.internalSecret = internalSecret;
     }
@@ -197,7 +205,7 @@ public class AiController {
      * clean message content is persisted and streamed correctly.
      */
     private class AiStreamProcessor {
-        private static final int MAX_BUFFER_SIZE = 50 * 1024; // 50KB protection
+        private static final int MAX_BUFFER_SIZE = 100 * 1024; // 100KB protection
 
         private final StringBuilder cleanContent = new StringBuilder();
         private final StringBuilder tagBuffer = new StringBuilder();
@@ -394,8 +402,7 @@ public class AiController {
         private void processTaskCreation() {
             if ("TASK".equals(suggestionType) && processedMetadataJson != null) {
                 try {
-                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                    Object metadata = mapper.readValue(processedMetadataJson, Object.class);
+                    Object metadata = objectMapper.readValue(processedMetadataJson, Object.class);
                     createSuggestionsForFamilyMembers(userEmail, suggestionType, metadata);
                 } catch (Exception e) {
                     log.error("Failed to parse task metadata for session {}", sessionId, e);
@@ -470,8 +477,7 @@ public class AiController {
         
         try {
             String decoded = decodeHtmlEntities(suggestionsJson);
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String[] array = mapper.readValue(decoded, String[].class);
+            String[] array = objectMapper.readValue(decoded, String[].class);
             return Arrays.asList(array);
         } catch (Exception e) {
             log.error("Failed to parse suggestions JSON: {}", suggestionsJson, e);
@@ -485,8 +491,7 @@ public class AiController {
         }
         
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            mapper.readTree(json);
+            objectMapper.readTree(json);
             return true;
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             return false;
@@ -588,15 +593,10 @@ public class AiController {
                 .map(ChatMessageDto::fromEntity);
     }
 
-    @PostMapping("/sessions/{sessionId}/summarize")
-    public Mono<ResponseEntity<Void>> summarizeSession(
-            @PathVariable String sessionId,
-            @RequestHeader(name = "X-User-Email") String email) {
-        return chatSessionRepository.findById(sessionId)
-                .filter(session -> session.getUserEmail().equals(email))
-                .flatMap(session -> Mono.fromRunnable(() -> summarizationScheduler.summarizeOldActiveSessions()))
-                .then(Mono.just(ResponseEntity.ok().<Void>build()))
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+    @PostMapping("/summarization")
+    public ResponseEntity<Void> triggerSummarization() {
+        summarizationService.summarizeAllOldActiveSessions();
+        return ResponseEntity.accepted().build();
     }
 
     private Mono<ChatSession> getOrCreateSession(String sessionId, String firstMessage, String userEmail) {
