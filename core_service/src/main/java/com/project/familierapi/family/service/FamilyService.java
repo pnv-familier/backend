@@ -71,6 +71,7 @@ public class FamilyService {
         return savedFamily;
     }
 
+    @Transactional
     public MyFamilyResponseDto getMyFamily(User user) {
         FamilyMember familyMember = familyMemberRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new NoSuchElementException("User is not part of any family."));
@@ -148,6 +149,7 @@ public class FamilyService {
         );
     }
 
+    @Transactional
     public FamilyMemberListResponseDto getFamilyMembers(User user) {
         FamilyMember currentUserMember = familyMemberRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new NoSuchElementException("User is not part of any family."));
@@ -167,6 +169,7 @@ public class FamilyService {
         return new FamilyMemberListResponseDto(memberDtos, members.size() == 1, currentUserMember.getFamily().getCreatedAt());
     }
 
+    @Transactional
     public FamilyPreviewDto getFamilyPreview(String inviteCode) {
         if (inviteCode == null || inviteCode.trim().isEmpty()) {
             throw new InvalidFamilyCodeException("Please enter a family code");
@@ -190,6 +193,7 @@ public class FamilyService {
                 .build();
     }
 
+    @Transactional
     public com.project.familierapi.family.dto.FamilyMembersForMentionDto getMembersForMention(User user) {
         FamilyMember currentUserMember = familyMemberRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new NoSuchElementException("User is not part of any family."));

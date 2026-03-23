@@ -71,6 +71,8 @@ jobs:
           CLOUDINARY_CLOUD_NAME: test_cloud
           CLOUDINARY_API_KEY: test_api_key
           CLOUDINARY_API_SECRET: test_api_secret
+          JWT_SECRET: test_jwt_secret
+          INTERNAL_SHARED_SECRET: test_internal_secret
 
         run: |
           nohup mvn spring-boot:run -DskipTests > app.log 2>&1 &

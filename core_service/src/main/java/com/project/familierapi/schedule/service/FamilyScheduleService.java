@@ -1,5 +1,7 @@
 package com.project.familierapi.schedule.service;
 
+import com.project.familierapi.notification.domain.NotificationType;
+import com.project.familierapi.notification.service.NotificationService;
 import com.project.familierapi.auth.repository.UserRepository;
 import com.project.familierapi.family.domain.Family;
 import com.project.familierapi.family.domain.FamilyMember;
@@ -9,6 +11,7 @@ import com.project.familierapi.schedule.dto.CalendarResponse;
 import com.project.familierapi.schedule.dto.CreateEventRequest;
 import com.project.familierapi.schedule.dto.EventResponse;
 import com.project.familierapi.schedule.exception.EventNotFoundException;
+import com.project.familierapi.family.repository.FamilyMemberRepository;
 import com.project.familierapi.schedule.repository.FamilyEventRepository;
 import com.project.familierapi.user.domain.User;
 import lombok.RequiredArgsConstructor;
@@ -21,9 +24,12 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@org.springframework.transaction.annotation.Transactional
 public class FamilyScheduleService {
     private final FamilyEventRepository eventRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
+    private final FamilyMemberRepository familyMemberRepository;
 
     @Transactional
     public EventResponse createEvent(User user, CreateEventRequest request) {
@@ -55,6 +61,15 @@ public class FamilyScheduleService {
             savedEvent.setParticipants(participants);
             eventRepository.save(savedEvent);
         }
+
+        // Notify all family members
+        familyMemberRepository.findByFamilyIdOrderByJoinedAt(family.getId()).stream()
+                .map(FamilyMember::getUser)
+                .forEach(member -> notificationService.createAndPush(
+                        member, null, NotificationType.SCHEDULE,
+                        "📅 New Family Event",
+                        user.getFullName() + " created: " + request.getTitle(),
+                        String.valueOf(savedEvent.getEventId())));
 
         return mapToEventResponse(savedEvent);
     }

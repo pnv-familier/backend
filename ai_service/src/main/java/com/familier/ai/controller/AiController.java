@@ -2,26 +2,36 @@ package com.familier.ai.controller;
 
 import com.familier.ai.dto.ChatMessageDto;
 import com.familier.ai.dto.FamilyMembersDto;
+import com.familier.ai.dto.FeedbackRequest;
+import com.familier.ai.service.ReportService;
 import com.familier.ai.entity.ChatMessage;
 import com.familier.ai.entity.ChatSession;
 import com.familier.ai.entity.Sender;
 import com.familier.ai.repository.ChatMessageRepository;
 import com.familier.ai.repository.ChatSessionRepository;
 import com.familier.ai.service.ContextManagerService;
+import com.familier.ai.service.FakeGeminiService;
 import com.familier.ai.service.GeminiService;
 import com.familier.ai.service.PromptService;
 import com.familier.ai.service.SuggestionService;
 import com.familier.ai.service.SummarizationScheduler;
+import com.familier.ai.service.SummarizationService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import com.familier.ai.entity.Report;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -29,7 +39,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -37,30 +46,37 @@ import java.util.regex.Pattern;
 @RequestMapping("/ai")
 public class AiController {
 
-    private static final Pattern METADATA_PATTERN = Pattern.compile("<suggestion_metadata>(.*?)</suggestion_metadata>",
-            Pattern.DOTALL);
-    private static final Pattern SUGGESTIONS_PATTERN = Pattern.compile("<suggestions>(.*?)</suggestions>",
-            Pattern.DOTALL);
-    
     private final GeminiService geminiService;
     private final PromptService promptService;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ContextManagerService contextManagerService;
     private final SummarizationScheduler summarizationScheduler;
+    private final SummarizationService summarizationService;
     private final SuggestionService suggestionService;
+    private final ReportService reportService;
     private final WebClient.Builder webClientBuilder;
+    private final ObjectMapper objectMapper;
     private final String coreServiceUrl;
     private final String internalSecret;
+
+    @Autowired
+    private FakeGeminiService fakeService;
+
+    @Value("${ai.mock:false}")
+    private boolean useMock;
 
     public AiController(GeminiService geminiService,
             PromptService promptService,
             ChatSessionRepository chatSessionRepository,
             ChatMessageRepository chatMessageRepository,
             SummarizationScheduler summarizationScheduler,
+            SummarizationService summarizationService,
             ContextManagerService contextManagerService,
             SuggestionService suggestionService,
+            ReportService reportService,
             WebClient.Builder webClientBuilder,
+            ObjectMapper objectMapper,
             @Value("${CORE_SERVICE_URL}") String coreServiceUrl,
             @Value("${application.security.internal.secret}") String internalSecret) {
         this.geminiService = geminiService;
@@ -68,9 +84,12 @@ public class AiController {
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.summarizationScheduler = summarizationScheduler;
+        this.summarizationService = summarizationService;
         this.contextManagerService = contextManagerService;
         this.suggestionService = suggestionService;
+        this.reportService = reportService;
         this.webClientBuilder = webClientBuilder;
+        this.objectMapper = objectMapper;
         this.coreServiceUrl = coreServiceUrl;
         this.internalSecret = internalSecret;
     }
@@ -83,29 +102,46 @@ public class AiController {
             @RequestHeader(name = "X-User-Email") String email) throws Exception {
 
         return getOrCreateSession(sessionId, message, email)
-                .flatMap(session -> contextManagerService
-                        .buildVariables(email, session.getId(), message, taggedUserEmail)
-                        .flatMap(result -> {
-                            try {
-                                boolean includeSuggestion = result.getDetection().getSuggestion().isHasSuggestion()
-                                        && result.getDetection().getSuggestion().getConfidence() > 0.6;
-                                String suggestionType = includeSuggestion
-                                        ? result.getDetection().getSuggestion().getType()
-                                        : null;
+                .flatMap(session -> {
+                    if (useMock) {
+                        // Skip detection when ai.fake=true
+                        try {
+                            String basicPrompt = promptService.loadSystemPrompt("virtual_member_v3", 
+                                    java.util.Map.of(), false, null);
+                            return Mono.just(ResponseEntity.ok()
+                                    .header("X-Session-Id", session.getId())
+                                    .body(saveUserMessage(session.getId(), message)
+                                            .flatMapMany(savedMsg -> executeAiStream(session.getId(), message,
+                                                    basicPrompt, null, null, email))));
+                        } catch (Exception e) {
+                            return Mono.error(e);
+                        }
+                    }
+                    
+                    return contextManagerService
+                            .buildVariables(email, session.getId(), message, taggedUserEmail)
+                            .flatMap(result -> {
+                                try {
+                                    boolean includeSuggestion = result.getDetection().getSuggestion().isHasSuggestion()
+                                            && result.getDetection().getSuggestion().getConfidence() > 0.6;
+                                    String suggestionType = includeSuggestion
+                                            ? result.getDetection().getSuggestion().getType()
+                                            : null;
 
-                                String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v3",
-                                        result.getVariables(), includeSuggestion, suggestionType);
+                                    String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v3",
+                                            result.getVariables(), includeSuggestion, suggestionType);
 
-                                return Mono.just(ResponseEntity.ok()
-                                        .header("X-Session-Id", session.getId())
-                                        .body(saveUserMessage(session.getId(), message)
-                                                .flatMapMany(savedMsg -> executeAiStream(session.getId(), message,
-                                                        enrichedPrompt,
-                                                        result.getTargetUserEmail(), suggestionType, email))));
-                            } catch (Exception e) {
-                                return Mono.error(e);
-                            }
-                        }));
+                                    return Mono.just(ResponseEntity.ok()
+                                            .header("X-Session-Id", session.getId())
+                                            .body(saveUserMessage(session.getId(), message)
+                                                    .flatMapMany(savedMsg -> executeAiStream(session.getId(), message,
+                                                            enrichedPrompt,
+                                                            result.getTargetUserEmail(), suggestionType, email))));
+                                } catch (Exception e) {
+                                    return Mono.error(e);
+                                }
+                            });
+                });
     }
 
     private Mono<ChatMessage> saveUserMessage(String sessionId, String content) {
@@ -134,254 +170,273 @@ public class AiController {
 
     private Flux<ServerSentEvent<String>> executeAiStream(String sessionId, String message, String systemPrompt,
             String targetUserEmail, String suggestionType, String userEmail) {
-        StringBuilder contentAccumulator = new StringBuilder();
-        StringBuilder tagBuffer = new StringBuilder();
-        String[] currentTag = {null};
         
-        return geminiService.streamGenerateContent(systemPrompt, message)
-                .concatMap(event -> {
-                    String data = event.data();
-                    
-                    if (data == null || data.equals("[DONE.]")) {
-                        return Flux.empty();
-                    }
+        AiStreamProcessor processor = new AiStreamProcessor(sessionId, suggestionType, targetUserEmail, userEmail);
+        
+        Flux<ServerSentEvent<String>> aiStream = useMock
+                ? fakeService.streamGenerateContent(systemPrompt, message)
+                : geminiService.streamGenerateContent(systemPrompt, message);
 
-                    List<ServerSentEvent<String>> events = new ArrayList<>();
-                    
-                    if (currentTag[0] != null) {
-                        tagBuffer.append(data);
-                        
-                        String closingTag = currentTag[0].equals("suggestions") 
-                                ? "</suggestions>" 
-                                : "</suggestion_metadata>";
-                        
-                        if (tagBuffer.toString().contains(closingTag)) {
-                            String buffered = tagBuffer.toString();
-                            Pattern pattern = currentTag[0].equals("suggestions")
-                                    ? SUGGESTIONS_PATTERN
-                                    : METADATA_PATTERN;
-                            
-                            Matcher matcher = pattern.matcher(buffered);
-                            if (matcher.find()) {
-                                String extracted = matcher.group(1).trim();
-                                extracted = decodeHtmlEntities(extracted);
-                                
-                                if (currentTag[0].equals("metadata")) {
-                                    if (suggestionType != null) {
-                                        extracted = injectTypeField(extracted, suggestionType);
-                                    }
-                                    
-                                    if (suggestionType != null && suggestionType.equals("TASK") 
-                                            && targetUserEmail != null && !targetUserEmail.isEmpty()) {
-                                        extracted = injectAssigneeEmail(extracted, targetUserEmail);
-                                    }
-                                    
-                                    contentAccumulator.append("<suggestion_metadata>").append(extracted).append("</suggestion_metadata>");
-                                    
-                                    if (isValidJson(extracted) && !"TASK".equals(suggestionType)) {
-                                        events.add(ServerSentEvent.<String>builder()
-                                                .event("metadata")
-                                                .data(extracted)
-                                                .build());
-                                    }
-                                } else {
-                                    contentAccumulator.append("<suggestions>").append(extracted).append("</suggestions>");
-                                }
-                                
-                                String afterTag = buffered.substring(buffered.indexOf(closingTag) + closingTag.length());
-                                if (!afterTag.isEmpty()) {
-                                    contentAccumulator.append(afterTag);
-                                    events.add(ServerSentEvent.<String>builder()
-                                            .event("message")
-                                            .data(afterTag)
-                                            .build());
-                                }
-                            }
-                            
-                            currentTag[0] = null;
-                            tagBuffer.setLength(0);
-                        }
-                        return Flux.fromIterable(events);
-                    }
-                    
-                    int suggestionsStart = data.indexOf("<suggestions>");
-                    int metadataStart = data.indexOf("<suggestion_metadata>");
-                    
-                    int tagStart = -1;
-                    String tagType = null;
-                    
-                    if (suggestionsStart >= 0 && metadataStart >= 0) {
-                        if (suggestionsStart < metadataStart) {
-                            tagStart = suggestionsStart;
-                            tagType = "suggestions";
-                        } else {
-                            tagStart = metadataStart;
-                            tagType = "metadata";
-                        }
-                    } else if (suggestionsStart >= 0) {
-                        tagStart = suggestionsStart;
-                        tagType = "suggestions";
-                    } else if (metadataStart >= 0) {
-                        tagStart = metadataStart;
-                        tagType = "metadata";
-                    }
-                    
-                    if (tagStart >= 0) {
-                        String beforeTag = data.substring(0, tagStart);
-                        if (!beforeTag.isEmpty()) {
-                            contentAccumulator.append(beforeTag);
-                            events.add(ServerSentEvent.<String>builder()
-                                    .event("message")
-                                    .data(beforeTag)
-                                    .build());
-                        }
-                        
-                        String fromTag = data.substring(tagStart);
-                        currentTag[0] = tagType;
-                        tagBuffer.append(fromTag);
-                        
-                        String closingTag = tagType.equals("suggestions") 
-                                ? "</suggestions>" 
-                                : "</suggestion_metadata>";
-                        
-                        if (fromTag.contains(closingTag)) {
-                            Pattern pattern = tagType.equals("suggestions")
-                                    ? SUGGESTIONS_PATTERN
-                                    : METADATA_PATTERN;
-                            
-                            Matcher matcher = pattern.matcher(tagBuffer.toString());
-                            if (matcher.find()) {
-                                String extracted = matcher.group(1).trim();
-                                extracted = decodeHtmlEntities(extracted);
-                                
-                                if (tagType.equals("metadata")) {
-                                    if (suggestionType != null) {
-                                        extracted = injectTypeField(extracted, suggestionType);
-                                    }
-                                    
-                                    if (suggestionType != null && suggestionType.equals("TASK") 
-                                            && targetUserEmail != null && !targetUserEmail.isEmpty()) {
-                                        extracted = injectAssigneeEmail(extracted, targetUserEmail);
-                                    }
-                                    
-                                    contentAccumulator.append("<suggestion_metadata>").append(extracted).append("</suggestion_metadata>");
-                                    
-                                    if (isValidJson(extracted) && !"TASK".equals(suggestionType)) {
-                                        events.add(ServerSentEvent.<String>builder()
-                                                .event("metadata")
-                                                .data(extracted)
-                                                .build());
-                                    }
-                                } else {
-                                    contentAccumulator.append("<suggestions>").append(extracted).append("</suggestions>");
-                                }
-                                
-                                String afterTag = tagBuffer.toString().substring(
-                                        tagBuffer.toString().indexOf(closingTag) + closingTag.length());
-                                if (!afterTag.isEmpty()) {
-                                    contentAccumulator.append(afterTag);
-                                    events.add(ServerSentEvent.<String>builder()
-                                            .event("message")
-                                            .data(afterTag)
-                                            .build());
-                                }
-                            }
-                            
-                            currentTag[0] = null;
-                            tagBuffer.setLength(0);
-                        }
-                        
-                        return Flux.fromIterable(events);
-                    }
-                    
-                    contentAccumulator.append(data);
-                    events.add(ServerSentEvent.<String>builder()
-                            .event("message")
-                            .data(data)
-                            .build());
-                    
-                    return Flux.fromIterable(events);
-                })
-                .concatWith(Flux.defer(() -> {
-                    String fullContent = contentAccumulator.toString();
-                    
-                    List<ServerSentEvent<String>> finalEvents = new ArrayList<>();
-                    
-                    Object metadata = null;
-                    if ("TASK".equals(suggestionType)) {
-                        Matcher metadataMatcher = METADATA_PATTERN.matcher(fullContent);
-                        if (metadataMatcher.find()) {
-                            String metadataJson = metadataMatcher.group(1).trim();
-                            metadataJson = decodeHtmlEntities(metadataJson);
-                            try {
-                                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                                metadata = mapper.readValue(metadataJson, Object.class);
-                            } catch (Exception e) {
-                                log.error("Failed to parse metadata", e);
-                            }
-                        }
-                    }
-                    
-                    String suggestionsJson = null;
-                    Matcher suggestionsMatcher = SUGGESTIONS_PATTERN.matcher(fullContent);
-                    if (suggestionsMatcher.find()) {
-                        suggestionsJson = suggestionsMatcher.group(1).trim();
-                        fullContent = suggestionsMatcher.replaceAll("");
-                        
-                        finalEvents.add(ServerSentEvent.<String>builder()
-                                .event("suggestions")
-                                .data(suggestionsJson)
-                                .build());
-                    }
-                    
-                    String cleanContent = fullContent.trim();
-                    List<String> suggestionsList = parseSuggestionsArray(suggestionsJson);
-                    
-                    persistAiResponse(sessionId, cleanContent, suggestionsList);
-                    
-                    if ("TASK".equals(suggestionType) && metadata != null) {
-                        createSuggestionsForFamilyMembers(userEmail, suggestionType, metadata);
-                    }
-                    
-                    finalEvents.add(ServerSentEvent.<String>builder()
-                            .event("done")
-                            .data("[DONE]")
-                            .build());
-                    
-                    return Flux.fromIterable(finalEvents);
-                }))
+        return aiStream
+                .concatMap(processor::process)
+                .concatWith(Flux.defer(processor::finalizeStream))
                 .doOnError(e -> {
-                    log.error("Error in AI stream: {}", e.getMessage(), e);
-                    String content = contentAccumulator.toString();
-                    content = content.replaceAll("<suggestions>.*?</suggestions>", "");
-                    content = content.replaceAll("<suggestion_metadata>.*?</suggestion_metadata>", "");
-                    persistAiResponse(sessionId, content.trim(), null);
+                    log.error("Error in AI stream for session {}: {}", sessionId, e.getMessage());
+                    persistAiResponse(sessionId, processor.getCleanContent(), null);
                 })
                 .onErrorResume(e -> {
-                    log.error("Gemini API error: {}", e.getMessage(), e);
-                    
-                    String errorMessage;
+                    String errorMessage = "Hiện tại Familier đang gặp vấn đề, vui lòng thử lại sau.";
                     String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-                    
-                    if (errorMsg.contains("model") || errorMsg.contains("gemini") || 
-                        errorMsg.contains("ai") || errorMsg.contains("generation")) {
+
+                    if (errorMsg.contains("model") || errorMsg.contains("gemini") ||
+                            errorMsg.contains("ai") || errorMsg.contains("generation")) {
                         errorMessage = "Hiện tại Familier đang gặp lỗi với model AI, vui lòng thử lại sau.";
-                    } else {
-                        errorMessage = "Hiện tại Familier đang gặp vấn đề, vui lòng thử lại sau.";
                     }
-                    
+
                     return Flux.just(
-                        ServerSentEvent.<String>builder()
-                            .event("message")
-                            .data(errorMessage)
-                            .build(),
-                        ServerSentEvent.<String>builder()
-                            .event("done")
-                            .data("[DONE]")
-                            .build()
-                    );
+                            ServerSentEvent.<String>builder().event("message").data(errorMessage).build(),
+                            ServerSentEvent.<String>builder().event("done").data("[DONE]").build());
                 });
     }
+
+    /**
+     * Stateful processor for AI response streams.
+     * Handles tag extraction (<suggestion_metadata>, <suggestions>) and ensures
+     * clean message content is persisted and streamed correctly.
+     */
+    private class AiStreamProcessor {
+        private static final int MAX_BUFFER_SIZE = 100 * 1024; // 100KB protection
+
+        private final StringBuilder cleanContent = new StringBuilder();
+        private final StringBuilder tagBuffer = new StringBuilder();
+        private final StringBuilder residualBuffer = new StringBuilder();
+        private String currentTag = null; // "metadata" or "suggestions"
+        private String suggestionsJson = null;
+        private String processedMetadataJson = null;
+
+        private final String sessionId;
+        private final String suggestionType;
+        private final String targetUserEmail;
+        private final String userEmail;
+
+        public AiStreamProcessor(String sessionId, String suggestionType, String targetUserEmail, String userEmail) {
+            this.sessionId = sessionId;
+            this.suggestionType = suggestionType;
+            this.targetUserEmail = targetUserEmail;
+            this.userEmail = userEmail;
+        }
+
+        /**
+         * Processes each chunk of data from the AI stream.
+         * Non-blocking and state-safe when used with concatMap.
+         */
+        public Flux<ServerSentEvent<String>> process(ServerSentEvent<String> event) {
+            String data = event.data();
+            // Standardize DONE signal handling
+            if (data == null || data.equals("[DONE]") || data.equals("[DONE.]")) {
+                return Flux.empty();
+            }
+
+            // Prevent unbounded memory growth
+            if (residualBuffer.length() + data.length() > MAX_BUFFER_SIZE) {
+                log.warn("Buffer limit exceeded for session {}. Flushing as plain text.", sessionId);
+                flushBuffersAsPlainText();
+            }
+
+            residualBuffer.append(data);
+            List<ServerSentEvent<String>> events = new ArrayList<>();
+
+            // Main parsing loop: process residual buffer until no more complete tokens are found
+            while (residualBuffer.length() > 0) {
+                if (currentTag == null) {
+                    if (!findAndProcessTagStart(events)) {
+                        break; // No more tags or partial tag start detected
+                    }
+                } else {
+                    if (!findAndProcessTagEnd(events)) {
+                        break; // Closing tag not found yet or partial closing tag detected
+                    }
+                }
+            }
+            return Flux.fromIterable(events);
+        }
+
+        private boolean findAndProcessTagStart(List<ServerSentEvent<String>> events) {
+            int metadataStart = residualBuffer.indexOf("<suggestion_metadata>");
+            int suggestionsStart = residualBuffer.indexOf("<suggestions>");
+            
+            int tagStartIdx = -1;
+            String tagType = null;
+            int tagLength = 0;
+
+            if (metadataStart != -1 && (suggestionsStart == -1 || metadataStart < suggestionsStart)) {
+                tagStartIdx = metadataStart;
+                tagType = "metadata";
+                tagLength = "<suggestion_metadata>".length();
+            } else if (suggestionsStart != -1) {
+                tagStartIdx = suggestionsStart;
+                tagType = "suggestions";
+                tagLength = "<suggestions>".length();
+            }
+
+            if (tagStartIdx == -1) {
+                // Check for partial tag starts (e.g., "<sugge") to avoid emitting them prematurely
+                int lastOpenBracket = residualBuffer.lastIndexOf("<");
+                if (lastOpenBracket != -1) {
+                    String potential = residualBuffer.substring(lastOpenBracket);
+                    if ("<suggestion_metadata>".startsWith(potential) || "<suggestions>".startsWith(potential)) {
+                        emitPlainText(residualBuffer.substring(0, lastOpenBracket), events);
+                        residualBuffer.delete(0, lastOpenBracket);
+                        return false; 
+                    }
+                }
+                // No tag found, emit everything as plain text
+                emitPlainText(residualBuffer.toString(), events);
+                residualBuffer.setLength(0);
+                return false;
+            } else {
+                // Full tag start found
+                emitPlainText(residualBuffer.substring(0, tagStartIdx), events);
+                currentTag = tagType;
+                residualBuffer.delete(0, tagStartIdx + tagLength);
+                return true;
+            }
+        }
+
+        private boolean findAndProcessTagEnd(List<ServerSentEvent<String>> events) {
+            String closingTag = currentTag.equals("metadata") ? "</suggestion_metadata>" : "</suggestions>";
+            int closingIdx = residualBuffer.indexOf(closingTag);
+
+            if (closingIdx == -1) {
+                // Check for partial closing tags (e.g., "</sugge")
+                int lastOpenSlash = residualBuffer.lastIndexOf("</");
+                if (lastOpenSlash != -1) {
+                    String potential = residualBuffer.substring(lastOpenSlash);
+                    if (closingTag.startsWith(potential)) {
+                        tagBuffer.append(residualBuffer.substring(0, lastOpenSlash));
+                        residualBuffer.delete(0, lastOpenSlash);
+                        return false;
+                    }
+                }
+                // Still inside tag, buffer current chunk
+                tagBuffer.append(residualBuffer);
+                residualBuffer.setLength(0);
+                return false;
+            } else {
+                // Found closing tag
+                tagBuffer.append(residualBuffer.substring(0, closingIdx));
+                handleTagContent(currentTag, tagBuffer.toString().trim(), events);
+                
+                residualBuffer.delete(0, closingIdx + closingTag.length());
+                tagBuffer.setLength(0);
+                currentTag = null;
+                return true;
+            }
+        }
+
+        private void emitPlainText(String text, List<ServerSentEvent<String>> events) {
+            if (text != null && !text.isEmpty()) {
+                cleanContent.append(text);
+                events.add(createEvent("message", text));
+            }
+        }
+
+        private void handleTagContent(String tagType, String extracted, List<ServerSentEvent<String>> events) {
+            String decoded = decodeHtmlEntities(extracted);
+            if ("metadata".equals(tagType)) {
+                String processed = decoded;
+                if (suggestionType != null) {
+                    processed = injectTypeField(processed, suggestionType);
+                }
+                if ("TASK".equals(suggestionType) && targetUserEmail != null && !targetUserEmail.isEmpty()) {
+                    processed = injectAssigneeEmail(processed, targetUserEmail);
+                }
+                processedMetadataJson = processed;
+                
+                if (isValidJson(processed) && !"TASK".equals(suggestionType)) {
+                    events.add(createEvent("metadata", processed));
+                }
+            } else if ("suggestions".equals(tagType)) {
+                suggestionsJson = decoded;
+                // Don't append suggestions to cleanContent anymore - keep them separate
+            }
+        }
+
+        /**
+         * Standardizes the end of the stream, flushing buffers and persisting results.
+         */
+        public Flux<ServerSentEvent<String>> finalizeStream() {
+            // Handle incomplete tags: flush them as plain text to avoid data loss
+            if (currentTag != null) {
+                log.warn("Stream ended while inside tag <{}> for session {}.", currentTag, sessionId);
+                if ("metadata".equals(currentTag)) {
+                    String tagPrefix = "<suggestion_metadata>";
+                    cleanContent.append(tagPrefix).append(tagBuffer);
+                } else if ("suggestions".equals(currentTag)) {
+                    // Don't add incomplete suggestions to cleanContent
+                    // Try to capture what we have for suggestions field
+                    suggestionsJson = tagBuffer.toString();
+                }
+                tagBuffer.setLength(0);
+                currentTag = null;
+            }
+
+            if (residualBuffer.length() > 0) {
+                cleanContent.append(residualBuffer);
+                residualBuffer.setLength(0);
+            }
+
+            List<ServerSentEvent<String>> finalEvents = new ArrayList<>();
+            persistAiResponse(sessionId, cleanContent.toString().trim(), parseSuggestionsArray(suggestionsJson));
+            
+            processTaskCreation();
+            
+            if (suggestionsJson != null) {
+                finalEvents.add(createEvent("suggestions", suggestionsJson));
+            }
+            
+            finalEvents.add(createEvent("done", "[DONE]"));
+            return Flux.fromIterable(finalEvents);
+        }
+
+        private void processTaskCreation() {
+            if ("TASK".equals(suggestionType) && processedMetadataJson != null) {
+                try {
+                    Object metadata = objectMapper.readValue(processedMetadataJson, Object.class);
+                    createSuggestionsForFamilyMembers(userEmail, suggestionType, metadata);
+                } catch (Exception e) {
+                    log.error("Failed to parse task metadata for session {}", sessionId, e);
+                }
+            }
+        }
+
+        private void flushBuffersAsPlainText() {
+            if (currentTag != null) {
+                if ("metadata".equals(currentTag)) {
+                    String tagPrefix = "<suggestion_metadata>";
+                    cleanContent.append(tagPrefix).append(tagBuffer);
+                } else if ("suggestions".equals(currentTag)) {
+                    // Don't add suggestions to cleanContent - they should be separate
+                    // Just capture the content for suggestions field
+                    suggestionsJson = tagBuffer.toString();
+                }
+                tagBuffer.setLength(0);
+                currentTag = null;
+            }
+            cleanContent.append(residualBuffer);
+            residualBuffer.setLength(0);
+        }
+
+        public String getCleanContent() {
+            return cleanContent.toString().trim();
+        }
+
+        private ServerSentEvent<String> createEvent(String name, String data) {
+            return ServerSentEvent.<String>builder().event(name).data(data).build();
+        }
+    }
+
+
 
     private String decodeHtmlEntities(String text) {
         if (text == null) return null;
@@ -422,8 +477,7 @@ public class AiController {
         
         try {
             String decoded = decodeHtmlEntities(suggestionsJson);
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            String[] array = mapper.readValue(decoded, String[].class);
+            String[] array = objectMapper.readValue(decoded, String[].class);
             return Arrays.asList(array);
         } catch (Exception e) {
             log.error("Failed to parse suggestions JSON: {}", suggestionsJson, e);
@@ -437,8 +491,7 @@ public class AiController {
         }
         
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            mapper.readTree(json);
+            objectMapper.readTree(json);
             return true;
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             return false;
@@ -513,6 +566,15 @@ public class AiController {
                 );
     }
 
+    @PostMapping("/feedback")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono<ResponseEntity<Report>> processFeedback(
+            @Valid @RequestBody FeedbackRequest request,
+            @RequestHeader("X-User-Email") String email) {
+        return reportService.processFeedback(request, email)
+                .map(report -> ResponseEntity.status(HttpStatus.CREATED).body(report));
+    }
+
     @GetMapping("/sessions")
     public Flux<ChatSession> getSessions(
             @RequestParam(defaultValue = "0") int page,
@@ -531,15 +593,10 @@ public class AiController {
                 .map(ChatMessageDto::fromEntity);
     }
 
-    @PostMapping("/sessions/{sessionId}/summarize")
-    public Mono<ResponseEntity<Void>> summarizeSession(
-            @PathVariable String sessionId,
-            @RequestHeader(name = "X-User-Email") String email) {
-        return chatSessionRepository.findById(sessionId)
-                .filter(session -> session.getUserEmail().equals(email))
-                .flatMap(session -> Mono.fromRunnable(() -> summarizationScheduler.summarizeOldActiveSessions()))
-                .then(Mono.just(ResponseEntity.ok().<Void>build()))
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+    @PostMapping("/summarization")
+    public ResponseEntity<Void> triggerSummarization() {
+        summarizationService.summarizeAllOldActiveSessions();
+        return ResponseEntity.accepted().build();
     }
 
     private Mono<ChatSession> getOrCreateSession(String sessionId, String firstMessage, String userEmail) {

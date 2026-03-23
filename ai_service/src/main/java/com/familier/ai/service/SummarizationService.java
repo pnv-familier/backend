@@ -42,17 +42,36 @@ public class SummarizationService {
     @Value("${gemini.timeout:120}")
     private long timeoutSeconds;
 
+    @Value("${app.summarization.concurrency:1}")
+    private int concurrency;
+
+    @Value("${app.summarization.idle-minutes:5}")
+    private int idleMinutes;
+
     public SummarizationService(WebClient.Builder webClientBuilder,
                                 ChatSessionRepository chatSessionRepository,
                                 ChatMessageRepository chatMessageRepository,
                                 UserContextRepository userContextRepository,
-                                UserProvider userProvider) {
+                                UserProvider userProvider,
+                                ObjectMapper objectMapper) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.userContextRepository = userContextRepository;
         this.userProvider = userProvider;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
+    }
+
+    public void summarizeAllOldActiveSessions() {
+        java.time.Instant idleThreshold = java.time.Instant.now().minus(idleMinutes, java.time.temporal.ChronoUnit.MINUTES);
+
+        chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", 
+                idleThreshold)
+                .flatMap(session -> {
+                    return summarizeSession(session.getId(), session.getUserEmail())
+                            .onErrorResume(e -> Mono.empty());
+                }, concurrency)
+                .subscribe();
     }
 
     public Mono<Void> summarizeSession(String sessionId, String userEmail) {
@@ -67,11 +86,7 @@ public class SummarizationService {
                                     .filter(msg -> msg.getTimestamp().isAfter(lastSummarized))
                                     .collectList()
                                     .flatMap(newMessages -> {
-                                        if (newMessages.isEmpty()) {
-                                            return Mono.empty();
-                                        }
-                                        
-                                        if (newMessages.size() < 3) {
+                                        if (newMessages.isEmpty() || newMessages.size() < 2) {
                                             return Mono.empty();
                                         }
 

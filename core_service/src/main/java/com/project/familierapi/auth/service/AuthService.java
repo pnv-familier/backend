@@ -37,6 +37,8 @@ public class AuthService {
     private final TokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final ObjectMapper objectMapper;
+
 
     @Value("${application.security.oauth2.google.client-id}")
     private String googleClientId;
@@ -95,6 +97,22 @@ public class AuthService {
                     return userRepository.save(newUser);
                 });
 
+        return createAuthResponse(user);
+    }
+
+    public AuthResponse loginAsAdmin(String email, String password) {
+        var possibleUser = this.userRepository.findByEmail(email);
+        if (possibleUser.isEmpty()) {
+            throw new BadCredentialsException("Email or password is incorrect");
+        }
+
+        User user = possibleUser.get();
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new BadCredentialsException("Email or password is incorrect");
+        }
+        if (user.getRole() != Role.ADMIN) {
+            throw new BadCredentialsException("Access denied: not an admin");
+        }
         return createAuthResponse(user);
     }
 
@@ -167,7 +185,7 @@ public class AuthService {
                 revokeAllUserTokens(user);
                 saveUserToken(user, accessToken);
                 var authResponse = new AuthResponse(accessToken, refreshToken, toUserDto(user));
-                new ObjectMapper().writeValue(response.getOutputStream(), authResponse);
+                objectMapper.writeValue(response.getOutputStream(), authResponse);
             }
         }
     }

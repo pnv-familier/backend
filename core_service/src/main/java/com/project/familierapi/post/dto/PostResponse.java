@@ -22,7 +22,7 @@ public class PostResponse {
     private Integer reactionCount;
     private Integer commentCount;
     private boolean hasMore;
-    private Boolean isReacted;
+    private Boolean userReacted;
     private String reactionType;
 
     @Data

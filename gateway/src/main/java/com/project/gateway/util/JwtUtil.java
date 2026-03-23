@@ -31,6 +31,20 @@ public class JwtUtil {
         }
     }
 
+    public String extractRole(String token) {
+        try {
+            DecodedJWT decodedJWT = JWT.decode(token);
+            var authorities = decodedJWT.getClaim("authorities").asList(String.class);
+            if (authorities != null && !authorities.isEmpty()) {
+                return authorities.get(0);
+            }
+            return null;
+        } catch (Exception e) {
+            logger.error("Failed to extract role from token: {}", e.getMessage());
+            return null;
+        }
+    }
+
     public Boolean validateToken(String token) {
         try {
             Algorithm algorithm = Algorithm.HMAC256(secretKey);

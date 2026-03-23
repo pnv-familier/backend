@@ -10,18 +10,4 @@ import java.util.Arrays;
 
 @Configuration
 public class CorsConfig {
-
-    @Bean
-    public CorsWebFilter corsWebFilter() {
-        CorsConfiguration corsConfig = new CorsConfiguration();
-        corsConfig.addAllowedOriginPattern("*");
-        corsConfig.addAllowedOrigin("https://servermonitor-pi.vercel.app");
-        corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        corsConfig.setAllowedHeaders(Arrays.asList("*"));
-        corsConfig.setMaxAge(60L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", corsConfig);
-        return new CorsWebFilter(source);
-    }
 }

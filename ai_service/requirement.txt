@@ -1,0 +1,120 @@
+You are a senior Java backend engineer specializing in Spring WebFlux and reactive streaming systems.
+
+I have a streaming controller that processes Server-Sent Events (SSE) from a Gemini AI service. The current implementation already works correctly in terms of parsing streamed content, including handling partial chunks and extracting structured tags like `<suggestion_metadata>` and `<suggestions>`.
+
+However, I need you to refactor and improve the code with the following STRICT requirements:
+
+---
+
+## 🎯 Goals
+
+1. Improve performance and remove bottlenecks
+2. Ensure proper reactive, non-blocking behavior
+3. Make the stream more resilient to malformed or partial AI responses
+4. Keep the existing parsing logic behavior unchanged (VERY IMPORTANT)
+
+---
+
+## ⚠️ Constraints (DO NOT BREAK)
+
+* DO NOT change the external API contract (SSE events: `message`, `metadata`, `suggestions`, `done`)
+* DO NOT change how tags are parsed logically
+* DO NOT remove support for partial chunk handling
+* DO NOT store `<suggestion_metadata>` inside the final message content
+* KEEP `<suggestions>` behavior as-is (still stored in DB for now)
+* DO NOT rewrite the whole system — only refactor safely
+
+---
+
+## 🔴 Current Issues to Fix
+
+### 1. Remove blocking synchronization
+
+* The method `process()` is currently marked `synchronized`
+* This creates a bottleneck in reactive flow
+* Remove `synchronized` and ensure thread safety in a non-blocking way
+
+---
+
+### 2. Improve reactive operator usage
+
+* Currently using `flatMapSequential`
+* Ensure:
+
+  * Order of chunks is preserved
+  * No unnecessary blocking occurs
+* If needed, explain whether `flatMapSequential` is still appropriate or suggest a better alternative
+
+---
+
+### 3. Prevent unbounded memory growth
+
+* `residualBuffer` and `tagBuffer` can grow indefinitely if tags are malformed or never closed
+* Add:
+
+  * Maximum buffer size protection (e.g., 10KB–50KB limit)
+  * Fallback behavior if limit exceeded (flush as text or reset safely)
+
+---
+
+### 4. Fix DONE signal inconsistency
+
+* The code checks for `[DONE.]` but emits `[DONE]`
+* Standardize this logic
+
+---
+
+### 5. Handle incomplete tag edge case in finalizeStream
+
+* If stream ends while still inside a tag (`currentTag != null`)
+* Currently data may be silently lost
+* Add:
+
+  * Logging warning
+  * Safe fallback handling (e.g., discard or flush as plain text)
+
+---
+
+### 6. Improve code structure (light refactor only)
+
+* Reduce complexity inside `process()` if possible
+* Extract small helper methods if it improves readability
+* DO NOT over-engineer or split into multiple classes
+
+---
+
+## 🧠 Additional Improvements (Optional but Preferred)
+
+* Add inline comments explaining:
+
+  * how chunk boundary is handled
+  * how partial tags are detected
+* Improve naming if unclear
+* Ensure clean, readable, production-level code
+
+---
+
+## 📦 Expected Output
+
+* Return the FULL updated version of:
+
+  * `AiStreamProcessor` class
+* Do NOT omit any methods
+* Keep it drop-in replaceable
+
+---
+
+## 🚨 Important
+
+This is a production streaming system.
+
+Avoid:
+
+* breaking stream order
+* changing parsing behavior
+* introducing blocking calls
+* introducing race conditions
+
+---
+
+Now refactor the code accordingly.

@@ -1,5 +1,6 @@
 package com.project.familierapi.auth.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.project.familierapi.auth.domain.AuthProvider;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -17,6 +18,7 @@ public class UserDto {
     private String avatarUrl;
     private AuthProvider authProvider;
     private boolean isPremium;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private boolean isSetup;
