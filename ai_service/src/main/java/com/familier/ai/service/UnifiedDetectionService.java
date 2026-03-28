@@ -36,7 +36,7 @@ public class UnifiedDetectionService {
             
             QUY TẮC ĐẶC BIỆT:
             - Nếu tin nhắn có từ: 'đề xuất', 'gợi ý', 'tạo lịch', 'nhắc mình' -> suggestion.confidence = 1.0
-            - Nếu phát hiện cảm xúc (buồn, stress, mệt mỏi, ...) cho loại 'OFFLINE' -> suggestion.confidence >= 0.5
+            - Nếu phát hiện cảm xúc (buồn, stress, mệt mỏi, ...) hoặc không biết kết nối với gia đình -> cho loại 'OFFLINE' -> suggestion.confidence >= 0.5
             
             Trả về JSON:
             {
@@ -53,13 +53,13 @@ public class UnifiedDetectionService {
             }
             
             Lưu ý:
-            - Chỉ trả về hasMention=true nếu confidence >= 0.7
+            - Chỉ trả về hasMention=true nếu confidence >= 0.6
             - Chỉ trả về hasSuggestion=true nếu: (type != 'OFFLINE' và confidence >= 0.6) HOẶC (type == 'OFFLINE' và confidence >= 0.5)
             - Phân loại type phải nghiêm ngặt
             
             Tin nhắn: "{message}"
             """;
-
+    
     public UnifiedDetectionService(WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
         this.objectMapper = objectMapper;
@@ -87,7 +87,7 @@ public class UnifiedDetectionService {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
-                .timeout(java.time.Duration.ofSeconds(20))
+                .timeout(java.time.Duration.ofSeconds(60))
                 .map(response -> parseUnifiedResponse(response, message))
                 .doOnNext(result -> log.info("Detection result: mention={}, suggestion={}", 
                         result.getMention().isHasMention(), result.getSuggestion().isHasSuggestion()))

@@ -263,10 +263,15 @@ public class ContextManagerService {
 
         return userContext.getFacts().stream()
                 .filter(fact -> fact.getConfidence() != null && fact.getConfidence() >= 0.7)
-                .map(fact -> String.format("- %s: %s (độ tin cậy: %.0f%%)",
-                        fact.getKey(),
-                        fact.getValue(),
-                        fact.getConfidence() * 100))
+                .sorted(java.util.Comparator.comparingDouble(UserContext.Fact::getConfidence).reversed())
+                .limit(10)
+                .map(fact -> {
+                    boolean isTemporary = "TEMPORARY".equals(fact.getCategory());
+                    return String.format("- %s: %s%s",
+                            fact.getKey(),
+                            fact.getValue(),
+                            isTemporary ? " [hiện tại]" : "");
+                })
                 .collect(Collectors.joining("\n"));
     }
 

@@ -37,6 +37,7 @@ public class UserContext {
         private String key;
         private String value;
         private Double confidence;
+        private String category; // "PERMANENT" | "TEMPORARY" | null (legacy → treated as PERMANENT)
         private String sourceSessionId;
         private Instant updatedAt;
     }

@@ -37,9 +37,6 @@ public class RelationMappingService {
     public Mono<String> mapRelationToEmail(String currentUserEmail, String relationType) {
         String cacheKey = CACHE_PREFIX + currentUserEmail + ":" + relationType;
         
-        log.debug("Mapping relation to email: user={}, relation={}", currentUserEmail, relationType);
-
-        // Try cache first
         return redisTemplate.opsForValue().get(cacheKey)
                 .doOnNext(cached -> log.debug("Cache hit for relation mapping: {}", cacheKey))
                 .switchIfEmpty(fetchFromCoreService(currentUserEmail, relationType, cacheKey))
@@ -61,9 +58,7 @@ public class RelationMappingService {
                 .retrieve()
                 .bodyToMono(Map.class)
                 .map(response -> (String) response.get("targetEmail"))
-                .flatMap(targetEmail -> {
-                    log.debug("Mapped {} for user {} to email {}", relationType, currentUserEmail, targetEmail);
-                    
+                .flatMap(targetEmail -> {                    
                     return redisTemplate.opsForValue()
                             .set(cacheKey, targetEmail, CACHE_TTL)
                             .thenReturn(targetEmail);

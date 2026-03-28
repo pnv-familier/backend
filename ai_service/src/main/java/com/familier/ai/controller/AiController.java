@@ -39,7 +39,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Pattern;
 
 @Slf4j
 @RestController
@@ -51,7 +50,6 @@ public class AiController {
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ContextManagerService contextManagerService;
-    private final SummarizationScheduler summarizationScheduler;
     private final SummarizationService summarizationService;
     private final SuggestionService suggestionService;
     private final ReportService reportService;
@@ -83,7 +81,6 @@ public class AiController {
         this.promptService = promptService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.summarizationScheduler = summarizationScheduler;
         this.summarizationService = summarizationService;
         this.contextManagerService = contextManagerService;
         this.suggestionService = suggestionService;

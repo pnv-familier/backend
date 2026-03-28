@@ -24,12 +24,10 @@ public class RelationshipMappingService {
     public Optional<String> mapRelationToEmail(String currentUserEmail, String relationTypeStr) {
         try {
             Relationship relationType = Relationship.valueOf(relationTypeStr.toUpperCase());
-            
+
             return relationshipInferenceRepository
-                    .findByUser1EmailAndRelationType(currentUserEmail, relationType)
+                    .findFirstByUser1EmailAndRelationType(currentUserEmail, relationType)
                     .map(inference -> {
-                        log.debug("Mapped {} for user {} to email {}", 
-                                relationType, currentUserEmail, inference.getUser2Email());
                         return inference.getUser2Email();
                     });
         } catch (IllegalArgumentException e) {
