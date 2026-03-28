@@ -32,7 +32,12 @@ public class UnifiedDetectionService {
             2. SUGGESTION DETECTION - Tin nhắn có chứa ý định cần hành động không?
             - EVENT: Nhắc đến thời gian cụ thể (HH:mm), ngày tháng, sự kiện, địa điểm
             - TASK: Nhắc đến chăm sóc, sức khỏe, công việc cho thành viên cụ thể
-            - OFFLINE: Thể hiện cảm xúc mạnh (stress, buồn, cô đơn, mệt mỏi) hoặc cần kết nối cá nhân
+            - OFFLINE: Thể hiện cảm xúc mạnh hoặc cần kết nối cá nhân
+              Sub-types của OFFLINE (chọn 1):
+              * EMOTIONAL_SUPPORT: mệt mỏi, áp lực, bế tắc, muốn bỏ cuộc
+              * SOCIAL_ISOLATION: một mình, không ai hiểu, nhớ nhà, cô đơn
+              * POSITIVE_MILESTONE: vừa được khen, đạt giải, xong dự án, vui quá
+              * STRONG_NEGATIVE_EMOTION: tức giận, bực mình, vô lý
             
             QUY TẮC ĐẶC BIỆT:
             - Nếu tin nhắn có từ: 'đề xuất', 'gợi ý', 'tạo lịch', 'nhắc mình' -> suggestion.confidence = 1.0
@@ -48,6 +53,7 @@ public class UnifiedDetectionService {
               "suggestion": {
                 "hasSuggestion": true/false,
                 "type": "EVENT"|"TASK"|"OFFLINE" hoặc null,
+                "subType": "EMOTIONAL_SUPPORT"|"SOCIAL_ISOLATION"|"POSITIVE_MILESTONE"|"STRONG_NEGATIVE_EMOTION" hoặc null,
                 "confidence": 0.0-1.0
               }
             }
@@ -55,6 +61,7 @@ public class UnifiedDetectionService {
             Lưu ý:
             - Chỉ trả về hasMention=true nếu confidence >= 0.6
             - Chỉ trả về hasSuggestion=true nếu: (type != 'OFFLINE' và confidence >= 0.6) HOẶC (type == 'OFFLINE' và confidence >= 0.5)
+            - subType chỉ có giá trị khi type = OFFLINE
             - Phân loại type phải nghiêm ngặt
             
             Tin nhắn: "{message}"
@@ -152,6 +159,8 @@ public class UnifiedDetectionService {
             UnifiedDetectionResult.SuggestionDetection suggestion = UnifiedDetectionResult.SuggestionDetection.builder()
                     .hasSuggestion(suggestionNode.has("hasSuggestion") && suggestionNode.get("hasSuggestion").asBoolean())
                     .type(type)
+                    .subType(suggestionNode.has("subType") && !suggestionNode.get("subType").isNull()
+                            ? suggestionNode.get("subType").asText() : null)
                     .confidence(confidence)
                     .build();
 
@@ -159,7 +168,14 @@ public class UnifiedDetectionService {
             if (suggestion.getConfidence() < threshold) {
                 suggestion.setHasSuggestion(false);
                 suggestion.setType(null);
+                suggestion.setSubType(null);
             }
+
+            // isBroadcast = true khi OFFLINE và có subType hợp lệ
+            boolean isBroadcast = "OFFLINE".equals(suggestion.getType())
+                    && suggestion.getSubType() != null
+                    && suggestion.isHasSuggestion();
+            suggestion.setBroadcast(isBroadcast);
 
             return UnifiedDetectionResult.builder()
                     .mention(mention)

@@ -47,6 +47,7 @@ public class SecurityConfig {
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers("/api/v1/auth/**", "/api/v1/admin/login", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/**", "/ai/actuator/**", "/core/actuator/**").permitAll()
                         .pathMatchers("/api/v1/admin/**", "/ai/api/v1/admin/**").hasRole("ADMIN")
+                        .pathMatchers("/api/v1/suggestions/urgent/stream").authenticated()
                         .anyExchange().authenticated()
                 )
 
@@ -85,10 +86,16 @@ public class SecurityConfig {
 
     private ServerAuthenticationConverter serverAuthenticationConverter() {
         return exchange -> {
+            // 1. Ƭu tiên: Authorization header (REST API thông thường)
             String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
             if (authHeader != null && authHeader.length() > 7 && authHeader.toLowerCase().startsWith("bearer ")) {
                 String token = authHeader.substring(7);
                 return Mono.just(new UsernamePasswordAuthenticationToken(token, token));
+            }
+            // 2. Fallback: query param ?token= (WebSocket không gửi được header)
+            String queryToken = exchange.getRequest().getQueryParams().getFirst("token");
+            if (queryToken != null && !queryToken.isBlank()) {
+                return Mono.just(new UsernamePasswordAuthenticationToken(queryToken, queryToken));
             }
             return Mono.empty();
         };

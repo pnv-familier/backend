@@ -4,9 +4,11 @@ spring:
 
       httpclient:
         pool:
-          max-idle-time: 5s 
+          max-idle-time: 5s
           max-life-time: 10s
         wiretap: true
+        websocket:
+          max-frame-payload-length: 65536
 
       routes:
         - id: ai_service_public_route
@@ -45,6 +47,16 @@ spring:
                 retries: 1
                 methods: POST
                 exceptions: reactor.netty.http.client.PrematureCloseException
+
+        - id: core_service_websocket_route
+          uri: ${CORE_SERVICE_WS_URL:ws://127.0.0.1:8081}
+          predicates:
+            - Path=/api/v1/suggestions/urgent/stream
+          metadata:
+            connect-timeout: 5000
+            response-timeout: 3600000
+          filters:
+            - AuthenticationFilter
 
         - id: core_service_route
           uri: ${CORE_SERVICE_URL}

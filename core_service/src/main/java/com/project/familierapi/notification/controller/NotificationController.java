@@ -51,6 +51,14 @@ public class NotificationController {
                 Map.of("count", notificationService.countUnread(user.getId()))));
     }
 
+    @PatchMapping("/{id}/notified")
+    public ResponseEntity<SuccessResponse<Void>> markAsNotified(
+            @AuthenticationPrincipal User user,
+            @PathVariable String id) {
+        notificationService.markAsNotified(id, user.getId());
+        return ResponseEntity.ok(new SuccessResponse<>("Notification marked as notified", null));
+    }
+
     @PatchMapping("/{id}/read")
     public ResponseEntity<SuccessResponse<Void>> markAsRead(
             @AuthenticationPrincipal User user,
