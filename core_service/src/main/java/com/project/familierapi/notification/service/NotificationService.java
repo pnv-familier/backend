@@ -69,7 +69,7 @@ public class NotificationService {
             case "post" -> List.of(NotificationType.POST_COMMENT, NotificationType.POST_REACTION);
             case "lovetask" -> List.of(NotificationType.LOVE_TASK);
             case "schedule" -> List.of(NotificationType.SCHEDULE);
-            case "ai" -> List.of(NotificationType.AI);
+            case "ai" -> List.of(NotificationType.AI, NotificationType.URGENT_SUGGESTION);
             default -> null;
         };
         List<Notification> notifications = types == null

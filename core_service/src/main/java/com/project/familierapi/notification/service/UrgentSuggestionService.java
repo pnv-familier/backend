@@ -8,6 +8,7 @@ import com.project.familierapi.notification.domain.UrgentSuggestion;
 import com.project.familierapi.notification.dto.BroadcastRequest;
 import com.project.familierapi.notification.dto.UrgentSuggestionResponse;
 import com.project.familierapi.notification.repository.UrgentSuggestionRepository;
+import com.project.familierapi.notification.websocket.UrgentSuggestionWebSocketHandler;
 import com.project.familierapi.user.domain.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,9 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
-
-import com.project.familierapi.notification.websocket.UrgentSuggestionWebSocketHandler;
 
 @Slf4j
 @Service
@@ -32,7 +32,6 @@ public class UrgentSuggestionService {
 
     @Transactional
     public void broadcast(BroadcastRequest request) {
-        // Lấy thành viên gia đình của sender
         FamilyMember senderMember = familyMemberRepository
                 .findByUserEmail(request.getSenderEmail())
                 .orElse(null);
@@ -42,7 +41,6 @@ public class UrgentSuggestionService {
             return;
         }
 
-        // Resolve senderName từ DB thay vì dùng email
         User senderUser = userRepository.findByEmail(request.getSenderEmail()).orElse(null);
         String resolvedSenderName = (senderUser != null && senderUser.getFullName() != null)
                 ? senderUser.getFullName()
@@ -74,16 +72,12 @@ public class UrgentSuggestionService {
         urgentSuggestionRepository.saveAll(suggestions);
         log.info("[UrgentSuggestion] Created {} suggestions for family={}", suggestions.size(), familyId);
 
-        // Gửi real-time qua WebSocket + push notification
         suggestions.forEach(s -> {
-            UrgentSuggestionResponse response = toResponse(s);
-            // WebSocket — nếu user đang online nhận ngay
-            webSocketHandler.sendToUser(s.getRecipient().getId(), response);
-            // Push notification — fallback khi user offline hoặc app background
+            webSocketHandler.sendToUser(s.getRecipient().getId(), toResponse(s));
             notificationService.createAndPush(
                     s.getRecipient(),
                     senderUser,
-                    NotificationType.AI,
+                    NotificationType.URGENT_SUGGESTION,
                     "🤖 Familier Assistant",
                     renderedMessage,
                     s.getId());
@@ -97,6 +91,14 @@ public class UrgentSuggestionService {
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public UrgentSuggestionResponse getById(String id, String recipientId) {
+        return urgentSuggestionRepository.findById(id)
+                .filter(u -> u.getRecipient().getId().equals(recipientId))
+                .map(this::toResponse)
+                .orElseThrow(() -> new NoSuchElementException("Urgent suggestion not found"));
     }
 
     @Transactional

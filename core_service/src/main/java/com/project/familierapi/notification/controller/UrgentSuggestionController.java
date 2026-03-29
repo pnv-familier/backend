@@ -28,15 +28,21 @@ public class UrgentSuggestionController {
                 .body(new SuccessResponse<>("Broadcast accepted", null));
     }
 
-    // Mobile — lấy danh sách urgent suggestions chưa đọc
     @GetMapping("/urgent")
     public ResponseEntity<SuccessResponse<List<UrgentSuggestionResponse>>> getUrgent(
             @AuthenticationPrincipal User user) {
-        List<UrgentSuggestionResponse> result = urgentSuggestionService.getUnread(user.getId());
-        return ResponseEntity.ok(new SuccessResponse<>("Urgent suggestions retrieved", result));
+        return ResponseEntity.ok(new SuccessResponse<>("Urgent suggestions retrieved",
+                urgentSuggestionService.getUnread(user.getId())));
     }
 
-    // Mobile — đánh dấu 1 suggestion đã đọc
+    @GetMapping("/urgent/{id}")
+    public ResponseEntity<SuccessResponse<UrgentSuggestionResponse>> getById(
+            @PathVariable String id,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(new SuccessResponse<>("Urgent suggestion retrieved successfully",
+                urgentSuggestionService.getById(id, user.getId())));
+    }
+
     @PatchMapping("/urgent/{id}/read")
     public ResponseEntity<SuccessResponse<Void>> markAsRead(
             @PathVariable String id,
@@ -45,7 +51,6 @@ public class UrgentSuggestionController {
         return ResponseEntity.ok(new SuccessResponse<>("Marked as read", null));
     }
 
-    // Mobile — đánh dấu tất cả đã đọc
     @PatchMapping("/urgent/read-all")
     public ResponseEntity<SuccessResponse<Void>> markAllAsRead(
             @AuthenticationPrincipal User user) {
