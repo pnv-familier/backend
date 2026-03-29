@@ -29,7 +29,9 @@ public class UnifiedDetectionResult {
     @AllArgsConstructor
     public static class SuggestionDetection {
         private boolean hasSuggestion;
-        private String type; // EVENT, TASK, OFFLINE
+        private String type;        // EVENT, TASK, OFFLINE
+        private String subType;     // EMOTIONAL_SUPPORT, SOCIAL_ISOLATION, POSITIVE_MILESTONE, STRONG_NEGATIVE_EMOTION
+        private boolean isBroadcast;
         private Double confidence;
     }
 }

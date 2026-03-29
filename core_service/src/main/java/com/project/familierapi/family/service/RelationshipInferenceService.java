@@ -18,7 +18,7 @@ public class RelationshipInferenceService {
     private final FamilyMemberRepository familyMemberRepository;
 
     public RelationshipInferenceService(RelationshipInferenceRepository relationshipInferenceRepository,
-                                        FamilyMemberRepository familyMemberRepository) {
+            FamilyMemberRepository familyMemberRepository) {
         this.relationshipInferenceRepository = relationshipInferenceRepository;
         this.familyMemberRepository = familyMemberRepository;
     }
@@ -31,7 +31,7 @@ public class RelationshipInferenceService {
                 .orElseThrow(() -> new IllegalStateException("New user not found"));
         FamilyMember adminMember = familyMemberRepository.findByUserId(adminId)
                 .orElseThrow(() -> new IllegalStateException("Admin not found"));
-        
+
         String newUserEmail = newMember.getUser().getEmail();
         String adminEmail = adminMember.getUser().getEmail();
         String newUserGender = newMember.getUser().getGender() != null ? newMember.getUser().getGender().name() : "OTHER";
@@ -50,7 +50,7 @@ public class RelationshipInferenceService {
             String memberId = member.getUser().getId();
             String memberEmail = member.getUser().getEmail();
             String memberGender = member.getUser().getGender() != null ? member.getUser().getGender().name() : "OTHER";
-            
+
             if (memberId.equals(newUserId) || memberId.equals(adminId)) {
                 continue;
             }
@@ -64,78 +64,79 @@ public class RelationshipInferenceService {
             Relationship zToY = inferRelationship(relationToAdmin, memberToAdmin, newUserGender, memberGender);
             if (zToY != null) {
                 saveRelationship(familyId, newUserEmail, memberEmail, zToY);
-                
+
                 Relationship yToZ = getReverseRelationship(zToY, newUserGender);
                 if (yToZ != null) {
                     saveRelationship(familyId, memberEmail, newUserEmail, yToZ);
                 }
-                
-                log.info("Inferred: {} -> {} = {}, {} -> {} = {}", 
-                         newUserEmail, memberEmail, zToY, memberEmail, newUserEmail, yToZ);
             }
         }
-
-        log.info("Completed relationship inference for user {}", newUserId);
     }
 
     /**
      * Infer relationship between Z and Y based on their relationships to Admin (X)
+     * 
      * @param zToAdmin Z's relationship to Admin
      * @param yToAdmin Y's relationship to Admin
-     * @param zGender Z's gender (MALE, FEMALE, OTHER)
-     * @param yGender Y's gender (MALE, FEMALE, OTHER)
+     * @param zGender  Z's gender (MALE, FEMALE, OTHER)
+     * @param yGender  Y's gender (MALE, FEMALE, OTHER)
      * @return Inferred relationship from Z to Y
      */
-    public Relationship inferRelationship(Relationship zToAdmin, Relationship yToAdmin, String zGender, String yGender) {
+    public Relationship inferRelationship(Relationship zToAdmin, Relationship yToAdmin, String zGender,
+            String yGender) {
         if (zToAdmin == null || yToAdmin == null) {
             return null;
         }
 
         // Z is child of X, Y is spouse of X -> Z is child of Y
-        if ((zToAdmin == Relationship.SON || zToAdmin == Relationship.DAUGHTER) && 
-            yToAdmin == Relationship.SPOUSE) {
+        if ((zToAdmin == Relationship.SON || zToAdmin == Relationship.DAUGHTER) &&
+                yToAdmin == Relationship.SPOUSE) {
             return zToAdmin; // Keep same gender
         }
 
-        // Z is child of X, Y is child of X -> Z is sibling of Y (use gender to determine BROTHER/SISTER)
-        if ((zToAdmin == Relationship.SON || zToAdmin == Relationship.DAUGHTER) && 
-            (yToAdmin == Relationship.SON || yToAdmin == Relationship.DAUGHTER)) {
+        // Z is child of X, Y is child of X -> Z is sibling of Y (use gender to
+        // determine BROTHER/SISTER)
+        if ((zToAdmin == Relationship.SON || zToAdmin == Relationship.DAUGHTER) &&
+                (yToAdmin == Relationship.SON || yToAdmin == Relationship.DAUGHTER)) {
             return "MALE".equals(yGender) ? Relationship.BROTHER : Relationship.SISTER;
         }
 
-        // Z is sibling of X, Y is sibling of X -> Z is sibling of Y (use gender to determine BROTHER/SISTER)
-        if ((zToAdmin == Relationship.BROTHER || zToAdmin == Relationship.SISTER) && 
-            (yToAdmin == Relationship.BROTHER || yToAdmin == Relationship.SISTER)) {
+        // Z is sibling of X, Y is sibling of X -> Z is sibling of Y (use gender to
+        // determine BROTHER/SISTER)
+        if ((zToAdmin == Relationship.BROTHER || zToAdmin == Relationship.SISTER) &&
+                (yToAdmin == Relationship.BROTHER || yToAdmin == Relationship.SISTER)) {
             return "MALE".equals(yGender) ? Relationship.BROTHER : Relationship.SISTER;
         }
 
-        // Z is spouse of X, Y is child of X -> Z is parent of Y (use gender to determine FATHER/MOTHER)
-        if (zToAdmin == Relationship.SPOUSE && 
-            (yToAdmin == Relationship.SON || yToAdmin == Relationship.DAUGHTER)) {
+        // Z is spouse of X, Y is child of X -> Z is parent of Y (use gender to
+        // determine FATHER/MOTHER)
+        if (zToAdmin == Relationship.SPOUSE &&
+                (yToAdmin == Relationship.SON || yToAdmin == Relationship.DAUGHTER)) {
             return "MALE".equals(zGender) ? Relationship.FATHER : Relationship.MOTHER;
         }
 
         // Z is parent of X, Y is child of X -> Z is grandparent of Y
-        if ((zToAdmin == Relationship.FATHER || zToAdmin == Relationship.MOTHER) && 
-            (yToAdmin == Relationship.SON || yToAdmin == Relationship.DAUGHTER)) {
+        if ((zToAdmin == Relationship.FATHER || zToAdmin == Relationship.MOTHER) &&
+                (yToAdmin == Relationship.SON || yToAdmin == Relationship.DAUGHTER)) {
             return zToAdmin == Relationship.FATHER ? Relationship.GRANDFATHER : Relationship.GRANDMOTHER;
         }
 
         // Z is child of X, Y is parent of X -> Z is grandchild of Y
-        if ((zToAdmin == Relationship.SON || zToAdmin == Relationship.DAUGHTER) && 
-            (yToAdmin == Relationship.FATHER || yToAdmin == Relationship.MOTHER)) {
+        if ((zToAdmin == Relationship.SON || zToAdmin == Relationship.DAUGHTER) &&
+                (yToAdmin == Relationship.FATHER || yToAdmin == Relationship.MOTHER)) {
             return zToAdmin; // Grandchild keeps gender (SON/DAUGHTER)
         }
 
-        // Z is sibling of X, Y is child of X -> Z is uncle/aunt of Y (use gender to determine)
-        if ((zToAdmin == Relationship.BROTHER || zToAdmin == Relationship.SISTER) && 
-            (yToAdmin == Relationship.SON || yToAdmin == Relationship.DAUGHTER)) {
+        // Z is sibling of X, Y is child of X -> Z is uncle/aunt of Y (use gender to
+        // determine)
+        if ((zToAdmin == Relationship.BROTHER || zToAdmin == Relationship.SISTER) &&
+                (yToAdmin == Relationship.SON || yToAdmin == Relationship.DAUGHTER)) {
             return "MALE".equals(zGender) ? Relationship.BROTHER : Relationship.SISTER;
         }
 
         // Z is child of X, Y is sibling of X -> Z is nephew/niece of Y
-        if ((zToAdmin == Relationship.SON || zToAdmin == Relationship.DAUGHTER) && 
-            (yToAdmin == Relationship.BROTHER || yToAdmin == Relationship.SISTER)) {
+        if ((zToAdmin == Relationship.SON || zToAdmin == Relationship.DAUGHTER) &&
+                (yToAdmin == Relationship.BROTHER || yToAdmin == Relationship.SISTER)) {
             return zToAdmin; // Use SON/DAUGHTER as nephew/niece equivalent
         }
 
@@ -147,7 +148,8 @@ public class RelationshipInferenceService {
      * Get reverse relationship based on the relationship type and gender
      */
     private Relationship getReverseRelationship(Relationship relationship, String userGender) {
-        if (relationship == null) return null;
+        if (relationship == null)
+            return null;
 
         return switch (relationship) {
             case SPOUSE -> Relationship.SPOUSE;
@@ -164,7 +166,7 @@ public class RelationshipInferenceService {
 
     private void saveRelationship(String familyId, String user1Email, String user2Email, Relationship relationType) {
         // Check if relationship already exists
-        if (relationshipInferenceRepository.findByUser1EmailAndUser2Email(user1Email, user2Email).isPresent()) {
+        if (relationshipInferenceRepository.findFirstByUser1EmailAndUser2Email(user1Email, user2Email).isPresent()) {
             log.debug("Relationship already exists: {} -> {}", user1Email, user2Email);
             return;
         }

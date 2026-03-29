@@ -44,6 +44,10 @@ public class Notification {
     @Column(name = "is_read")
     private boolean read = false;
 
+    @Builder.Default
+    @Column(name = "notified", nullable = false)
+    private boolean notified = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

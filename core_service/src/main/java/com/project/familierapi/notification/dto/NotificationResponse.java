@@ -16,5 +16,6 @@ public class NotificationResponse {
     private String referenceId;
     private boolean isRead;
     private String status; // "READ" or "UNREAD"
+    private boolean notified;
     private Instant createdAt;
 }

@@ -5,5 +5,6 @@ public enum NotificationType {
     POST_REACTION,
     LOVE_TASK,
     SCHEDULE,
-    AI
+    AI,
+    URGENT_SUGGESTION
 }

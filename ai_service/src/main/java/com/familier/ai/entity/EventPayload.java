@@ -7,7 +7,7 @@ import org.springframework.data.annotation.TypeAlias;
 @TypeAlias("EVENT")
 public class EventPayload extends BasePayload {
     private String title;
-    private String startTime, endTime; // HH:mm format
+    private String startTime, endTime;
     private Integer date, month, year;
     private String location;
 }

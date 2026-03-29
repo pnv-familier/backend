@@ -49,7 +49,7 @@ public class NotificationService {
     public void createAndPush(User recipient, User actor, NotificationType type,
                               String title, String body, String referenceId) {
         if (actor != null && recipient.getId().equals(actor.getId())) return;
-        notificationRepository.save(Notification.builder()
+        Notification notification = notificationRepository.save(Notification.builder()
                 .recipient(recipient)
                 .actor(actor)
                 .type(type)
@@ -58,6 +58,8 @@ public class NotificationService {
                 .referenceId(referenceId)
                 .build());
         pushNotificationService.sendToUser(recipient.getId(), title, body, type.name(), referenceId);
+        notification.setNotified(true);
+        notificationRepository.save(notification);
     }
 
     @Transactional(readOnly = true)
@@ -67,13 +69,23 @@ public class NotificationService {
             case "post" -> List.of(NotificationType.POST_COMMENT, NotificationType.POST_REACTION);
             case "lovetask" -> List.of(NotificationType.LOVE_TASK);
             case "schedule" -> List.of(NotificationType.SCHEDULE);
-            case "ai" -> List.of(NotificationType.AI);
+            case "ai" -> List.of(NotificationType.AI, NotificationType.URGENT_SUGGESTION);
             default -> null;
         };
         List<Notification> notifications = types == null
                 ? notificationRepository.findByRecipientIdOrderByCreatedAtDesc(userId, limit)
                 : notificationRepository.findByRecipientIdAndTypeInOrderByCreatedAtDesc(userId, types, limit);
         return notifications.stream().map(this::toResponse).collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void markAsNotified(String notificationId, String userId) {
+        notificationRepository.findById(notificationId)
+                .filter(n -> n.getRecipient().getId().equals(userId))
+                .ifPresent(n -> {
+                    n.setNotified(true);
+                    notificationRepository.save(n);
+                });
     }
 
     @Transactional
@@ -104,6 +116,7 @@ public class NotificationService {
                 .referenceId(n.getReferenceId())
                 .isRead(n.isRead())
                 .status(n.isRead() ? "READ" : "UNREAD")
+                .notified(n.isNotified())
                 .createdAt(n.getCreatedAt())
                 .build();
     }

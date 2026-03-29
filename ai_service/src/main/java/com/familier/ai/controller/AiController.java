@@ -39,7 +39,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Pattern;
 
 @Slf4j
 @RestController
@@ -51,7 +50,6 @@ public class AiController {
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ContextManagerService contextManagerService;
-    private final SummarizationScheduler summarizationScheduler;
     private final SummarizationService summarizationService;
     private final SuggestionService suggestionService;
     private final ReportService reportService;
@@ -83,7 +81,6 @@ public class AiController {
         this.promptService = promptService;
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
-        this.summarizationScheduler = summarizationScheduler;
         this.summarizationService = summarizationService;
         this.contextManagerService = contextManagerService;
         this.suggestionService = suggestionService;
@@ -112,7 +109,7 @@ public class AiController {
                                     .header("X-Session-Id", session.getId())
                                     .body(saveUserMessage(session.getId(), message)
                                             .flatMapMany(savedMsg -> executeAiStream(session.getId(), message,
-                                                    basicPrompt, null, null, email))));
+                                                    basicPrompt, null, null, email, false, null))));
                         } catch (Exception e) {
                             return Mono.error(e);
                         }
@@ -131,12 +128,16 @@ public class AiController {
                                     String enrichedPrompt = promptService.loadSystemPrompt("virtual_member_v3",
                                             result.getVariables(), includeSuggestion, suggestionType);
 
+                                    boolean shouldBroadcast = result.getDetection().getSuggestion().isBroadcast();
+                                    String subType = result.getDetection().getSuggestion().getSubType();
+
                                     return Mono.just(ResponseEntity.ok()
                                             .header("X-Session-Id", session.getId())
                                             .body(saveUserMessage(session.getId(), message)
                                                     .flatMapMany(savedMsg -> executeAiStream(session.getId(), message,
                                                             enrichedPrompt,
-                                                            result.getTargetUserEmail(), suggestionType, email))));
+                                                            result.getTargetUserEmail(), suggestionType, email,
+                                                            shouldBroadcast, subType))));
                                 } catch (Exception e) {
                                     return Mono.error(e);
                                 }
@@ -169,10 +170,11 @@ public class AiController {
     }
 
     private Flux<ServerSentEvent<String>> executeAiStream(String sessionId, String message, String systemPrompt,
-            String targetUserEmail, String suggestionType, String userEmail) {
-        
+            String targetUserEmail, String suggestionType, String userEmail,
+            boolean shouldBroadcast, String subType) {
+
         AiStreamProcessor processor = new AiStreamProcessor(sessionId, suggestionType, targetUserEmail, userEmail);
-        
+
         Flux<ServerSentEvent<String>> aiStream = useMock
                 ? fakeService.streamGenerateContent(systemPrompt, message)
                 : geminiService.streamGenerateContent(systemPrompt, message);
@@ -180,6 +182,12 @@ public class AiController {
         return aiStream
                 .concatMap(processor::process)
                 .concatWith(Flux.defer(processor::finalizeStream))
+                .doOnComplete(() -> {
+                    // Fire-and-forget broadcast — không block stream chính
+                    if (shouldBroadcast && subType != null) {
+                        broadcastToFamily(userEmail, message, subType);
+                    }
+                })
                 .doOnError(e -> {
                     log.error("Error in AI stream for session {}: {}", sessionId, e.getMessage());
                     persistAiResponse(sessionId, processor.getCleanContent(), null);
@@ -187,12 +195,10 @@ public class AiController {
                 .onErrorResume(e -> {
                     String errorMessage = "Hiện tại Familier đang gặp vấn đề, vui lòng thử lại sau.";
                     String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-
                     if (errorMsg.contains("model") || errorMsg.contains("gemini") ||
                             errorMsg.contains("ai") || errorMsg.contains("generation")) {
                         errorMessage = "Hiện tại Familier đang gặp lỗi với model AI, vui lòng thử lại sau.";
                     }
-
                     return Flux.just(
                             ServerSentEvent.<String>builder().event("message").data(errorMessage).build(),
                             ServerSentEvent.<String>builder().event("done").data("[DONE]").build());
@@ -529,6 +535,42 @@ public class AiController {
                 .subscribe(
                     saved -> {},
                     error -> log.error("Failed to save AI message", error)
+                );
+    }
+
+    private void broadcastToFamily(String userEmail, String originalMessage, String subType) {
+        // Static mapping subType -> emotion/context — không gọi Gemini thêm
+        String emotion = switch (subType) {
+            case "EMOTIONAL_SUPPORT" -> "mệt mỏi và cần được động viên";
+            case "SOCIAL_ISOLATION" -> "cảm thấy cô đơn";
+            case "POSITIVE_MILESTONE" -> "vừa đạt được điều gì đó đáng vui";
+            case "STRONG_NEGATIVE_EMOTION" -> "đang có cảm xúc tiêu cực";
+            default -> "cần sự quan tâm";
+        };
+
+        // Extract context từ message (lấy 50 ký tự đầu làm context ngắn)
+        String context = originalMessage.length() > 50
+                ? originalMessage.substring(0, 50) + "..."
+                : originalMessage;
+
+        java.util.Map<String, String> payload = java.util.Map.of(
+                "senderEmail", userEmail,
+                "senderName", userEmail, // core service sẽ resolve tên từ email
+                "emotion", emotion,
+                "context", context,
+                "subType", subType
+        );
+
+        WebClient webClient = webClientBuilder.baseUrl(coreServiceUrl).build();
+        webClient.post()
+                .uri("/api/v1/suggestions/broadcast")
+                .header("X-Internal-Secret", internalSecret)
+                .bodyValue(payload)
+                .retrieve()
+                .bodyToMono(Void.class)
+                .subscribe(
+                        v -> log.info("[Broadcast] Sent for user={} subType={}", userEmail, subType),
+                        e -> log.error("[Broadcast] Failed for user={}: {}", userEmail, e.getMessage())
                 );
     }
 
