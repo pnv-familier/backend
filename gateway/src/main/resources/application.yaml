@@ -49,6 +49,7 @@ spring:
                 exceptions: reactor.netty.http.client.PrematureCloseException
 
         - id: core_service_websocket_route
+          order: 1
           uri: ${CORE_SERVICE_WS_URL:ws://127.0.0.1:8081}
           predicates:
             - Path=/api/v1/suggestions/urgent/stream
@@ -59,6 +60,7 @@ spring:
             - AuthenticationFilter
 
         - id: core_service_route
+          order: 10
           uri: ${CORE_SERVICE_URL}
           predicates:
             - Path=/**
