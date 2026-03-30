@@ -56,6 +56,13 @@ public class RelationMappingService {
                 .uri(url)
                 .header("X-Internal-Secret", internalSecret)
                 .retrieve()
+                .onStatus(
+                        status -> status.value() == 404,
+                        response -> {
+                            log.debug("No relation mapping found for user={} relationType={}", currentUserEmail, relationType);
+                            return Mono.empty();
+                        }
+                )
                 .bodyToMono(Map.class)
                 .map(response -> (String) response.get("targetEmail"))
                 .flatMap(targetEmail -> {                    
@@ -64,7 +71,7 @@ public class RelationMappingService {
                             .thenReturn(targetEmail);
                 })
                 .onErrorResume(e -> {
-                    log.error("Error calling Core Service for relation mapping: {}", e.getMessage(), e);
+                    log.error("Error calling Core Service for relation mapping: {}", e.getMessage());
                     return Mono.just("");
                 });
     }
