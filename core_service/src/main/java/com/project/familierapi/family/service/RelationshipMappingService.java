@@ -15,21 +15,14 @@ public class RelationshipMappingService {
 
     private final RelationshipInferenceRepository relationshipInferenceRepository;
 
-    /**
-     * Map relationship type to actual user email
-     * @param currentUserEmail Email of current user
-     * @param relationTypeStr Relationship type as string (e.g., "FATHER", "MOTHER")
-     * @return Email of the target user, or empty if not found
-     */
     public Optional<String> mapRelationToEmail(String currentUserEmail, String relationTypeStr) {
         try {
             Relationship relationType = Relationship.valueOf(relationTypeStr.toUpperCase());
 
             return relationshipInferenceRepository
-                    .findFirstByUser1EmailAndRelationType(currentUserEmail, relationType)
-                    .map(inference -> {
-                        return inference.getUser2Email();
-                    });
+                    .findFirstByUser2EmailAndRelationType(currentUserEmail, relationType)
+                    .map(inference -> inference.getUser1Email());
+
         } catch (IllegalArgumentException e) {
             log.warn("Invalid relationship type: {}", relationTypeStr);
             return Optional.empty();

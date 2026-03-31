@@ -60,19 +60,25 @@ public class RelationMappingService {
                         status -> status.value() == 404,
                         response -> {
                             log.debug("No relation mapping found for user={} relationType={}", currentUserEmail, relationType);
-                            return Mono.empty();
+                            return Mono.error(new NoSuchFieldException("not_found"));
                         }
                 )
                 .bodyToMono(Map.class)
                 .map(response -> (String) response.get("targetEmail"))
-                .flatMap(targetEmail -> {                    
+                .flatMap(targetEmail -> {
+                    if (targetEmail == null || targetEmail.isEmpty()) {
+                        return Mono.empty();
+                    }
                     return redisTemplate.opsForValue()
                             .set(cacheKey, targetEmail, CACHE_TTL)
                             .thenReturn(targetEmail);
                 })
                 .onErrorResume(e -> {
+                    if (e instanceof NoSuchFieldException && "not_found".equals(e.getMessage())) {
+                        return Mono.empty();
+                    }
                     log.error("Error calling Core Service for relation mapping: {}", e.getMessage());
-                    return Mono.just("");
+                    return Mono.empty();
                 });
     }
 }

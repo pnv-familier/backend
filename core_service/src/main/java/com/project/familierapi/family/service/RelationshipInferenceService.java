@@ -151,16 +151,18 @@ public class RelationshipInferenceService {
         if (relationship == null)
             return null;
 
+        boolean isMale = "MALE".equals(userGender);
+
         return switch (relationship) {
             case SPOUSE -> Relationship.SPOUSE;
-            case SON -> Relationship.FATHER;
-            case DAUGHTER -> Relationship.MOTHER;
-            case FATHER -> Relationship.SON;
-            case MOTHER -> Relationship.DAUGHTER;
-            case BROTHER -> Relationship.BROTHER;
-            case SISTER -> Relationship.SISTER;
-            case GRANDFATHER -> Relationship.SON;
-            case GRANDMOTHER -> Relationship.DAUGHTER;
+            case SON -> isMale ? Relationship.FATHER : Relationship.MOTHER;
+            case DAUGHTER -> isMale ? Relationship.FATHER : Relationship.MOTHER;
+            case FATHER -> isMale ? Relationship.SON : Relationship.DAUGHTER;
+            case MOTHER -> isMale ? Relationship.SON : Relationship.DAUGHTER;
+            case BROTHER -> isMale ? Relationship.BROTHER : Relationship.SISTER;
+            case SISTER -> isMale ? Relationship.BROTHER : Relationship.SISTER;
+            case GRANDFATHER -> isMale ? Relationship.SON : Relationship.DAUGHTER;
+            case GRANDMOTHER -> isMale ? Relationship.SON : Relationship.DAUGHTER;
         };
     }
 

@@ -15,4 +15,6 @@ public interface RelationshipInferenceRepository extends JpaRepository<Relations
     List<RelationshipInference> findByUser1Email(String user1Email);
 
     Optional<RelationshipInference> findFirstByUser1EmailAndRelationType(String user1Email, Relationship relationType);
+
+    Optional<RelationshipInference> findFirstByUser2EmailAndRelationType(String user2Email, Relationship relationType);
 }

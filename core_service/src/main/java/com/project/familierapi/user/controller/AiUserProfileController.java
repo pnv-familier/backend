@@ -75,13 +75,20 @@ public class AiUserProfileController {
                         dto.setHobbies("[]");
                     }
 
-                    // Get relationship from current user perspective
                     if (currentUserEmail.equals(targetUserEmail)) {
                         dto.setRelationType("SELF");
                     } else {
                         relationshipInferenceRepository
                                 .findFirstByUser1EmailAndUser2Email(currentUserEmail, targetUserEmail)
-                                .ifPresent(relation -> dto.setRelationType(relation.getRelationType().name()));
+                                .ifPresent(relation -> {
+                                    String targetGender = targetUser.getGender() != null
+                                            ? targetUser.getGender().name() : "OTHER";
+                                    com.project.familierapi.family.domain.Relationship reversed =
+                                            getReverseRelationship(relation.getRelationType(), targetGender);
+                                    dto.setRelationType(reversed != null
+                                            ? reversed.name()
+                                            : relation.getRelationType().name());
+                                });
                     }
 
                     return ResponseEntity.ok(dto);
@@ -101,5 +108,22 @@ public class AiUserProfileController {
                     return ResponseEntity.ok(response);
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    private com.project.familierapi.family.domain.Relationship getReverseRelationship(
+            com.project.familierapi.family.domain.Relationship rel, String targetGender) {
+        if (rel == null) return null;
+        boolean isMale = "MALE".equals(targetGender);
+        return switch (rel) {
+            case FATHER, MOTHER -> isMale ? com.project.familierapi.family.domain.Relationship.SON
+                    : com.project.familierapi.family.domain.Relationship.DAUGHTER;
+            case SON, DAUGHTER -> isMale ? com.project.familierapi.family.domain.Relationship.FATHER
+                    : com.project.familierapi.family.domain.Relationship.MOTHER;
+            case BROTHER, SISTER -> isMale ? com.project.familierapi.family.domain.Relationship.BROTHER
+                    : com.project.familierapi.family.domain.Relationship.SISTER;
+            case GRANDFATHER, GRANDMOTHER -> isMale ? com.project.familierapi.family.domain.Relationship.SON
+                    : com.project.familierapi.family.domain.Relationship.DAUGHTER;
+            case SPOUSE -> com.project.familierapi.family.domain.Relationship.SPOUSE;
+        };
     }
 }
