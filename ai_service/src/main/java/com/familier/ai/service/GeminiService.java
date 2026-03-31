@@ -37,12 +37,11 @@ public class GeminiService {
     @CircuitBreaker(name = "gemini-api", fallbackMethod = "fallbackStreamResponse")
     @Retry(name = "gemini-api")
     public Flux<ServerSentEvent<String>> streamGenerateContent(String systemPrompt, String message) {
-        String url = "/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=" + API_KEY;
+        String url = "/v1beta/models/gemini-3.1-flash-lite-preview:streamGenerateContent?key=" + API_KEY;
 
         Map<String, Object> body = Map.of(
                 "system_instruction", Map.of("parts", List.of(Map.of("text", systemPrompt))),
-                "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", message))))
-        );
+                "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", message)))));
 
         return webClient.post()
                 .uri(url)
@@ -54,9 +53,9 @@ public class GeminiService {
                         response -> {
                             log.error("Gemini API error: status={}", response.statusCode());
                             return response.createException();
-                        }
-                )
-                .bodyToFlux(new ParameterizedTypeReference<Map<String, Object>>() {})
+                        })
+                .bodyToFlux(new ParameterizedTypeReference<Map<String, Object>>() {
+                })
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .<ServerSentEvent<String>>map(response -> {
                     String text = extractTextFromResponse(response);
@@ -70,18 +69,17 @@ public class GeminiService {
 
     public Flux<ServerSentEvent<String>> fallbackStreamResponse(String systemPrompt, String message, Exception ex) {
         log.error("Circuit breaker triggered or max retries exceeded for Gemini API: {}", ex.getMessage());
-        
+
         String fallbackMessage = "Xin lỗi, mình đang gặp vấn đề kết nối với hệ thống AI. " +
                 "Vui lòng thử lại sau vài giây nhé. Mình sẽ cố gắng phục vụ bạn tốt hơn.";
-        
+
         return Flux.just(
                 ServerSentEvent.<String>builder()
                         .data(fallbackMessage)
                         .build(),
                 ServerSentEvent.<String>builder()
                         .data("[DONE.]")
-                        .build()
-        );
+                        .build());
     }
 
     private String extractTextFromResponse(Map<String, Object> response) {
