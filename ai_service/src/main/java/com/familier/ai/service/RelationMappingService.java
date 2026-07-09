@@ -37,9 +37,6 @@ public class RelationMappingService {
     public Mono<String> mapRelationToEmail(String currentUserEmail, String relationType) {
         String cacheKey = CACHE_PREFIX + currentUserEmail + ":" + relationType;
         
-        log.debug("Mapping relation to email: user={}, relation={}", currentUserEmail, relationType);
-
-        // Try cache first
         return redisTemplate.opsForValue().get(cacheKey)
                 .doOnNext(cached -> log.debug("Cache hit for relation mapping: {}", cacheKey))
                 .switchIfEmpty(fetchFromCoreService(currentUserEmail, relationType, cacheKey))
@@ -59,18 +56,29 @@ public class RelationMappingService {
                 .uri(url)
                 .header("X-Internal-Secret", internalSecret)
                 .retrieve()
+                .onStatus(
+                        status -> status.value() == 404,
+                        response -> {
+                            log.debug("No relation mapping found for user={} relationType={}", currentUserEmail, relationType);
+                            return Mono.error(new NoSuchFieldException("not_found"));
+                        }
+                )
                 .bodyToMono(Map.class)
                 .map(response -> (String) response.get("targetEmail"))
                 .flatMap(targetEmail -> {
-                    log.debug("Mapped {} for user {} to email {}", relationType, currentUserEmail, targetEmail);
-                    
+                    if (targetEmail == null || targetEmail.isEmpty()) {
+                        return Mono.empty();
+                    }
                     return redisTemplate.opsForValue()
                             .set(cacheKey, targetEmail, CACHE_TTL)
                             .thenReturn(targetEmail);
                 })
                 .onErrorResume(e -> {
-                    log.error("Error calling Core Service for relation mapping: {}", e.getMessage(), e);
-                    return Mono.just("");
+                    if (e instanceof NoSuchFieldException && "not_found".equals(e.getMessage())) {
+                        return Mono.empty();
+                    }
+                    log.error("Error calling Core Service for relation mapping: {}", e.getMessage());
+                    return Mono.empty();
                 });
     }
 }

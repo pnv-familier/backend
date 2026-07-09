@@ -23,22 +23,26 @@ public class InternalTrustFilter extends OncePerRequestFilter {
 
         String path = request.getServletPath();
 
+        // Paths bypass hoàn toàn — không cần secret
         if (path.startsWith("/api/v1/auth/") ||
                 path.startsWith("/swagger-ui") ||
                 path.startsWith("/v3/api-docs") ||
-                path.startsWith("/actuator")) {
+                path.startsWith("/actuator") ||
+                path.startsWith("/api/v1/suggestions/urgent/stream")) {
             filterChain.doFilter(request, response);
             return;
         }
 
         String requestSecret = request.getHeader("X-Internal-Secret");
 
-        if (requestSecret == null || !requestSecret.equals(internalSecret)) {
-            response.setStatus(HttpStatus.FORBIDDEN.value());
-            response.getWriter().write("Access Denied: Invalid internal secret");
+        // Có secret hợp lệ — internal call, cho qua luôn không cần JWT
+        if (requestSecret != null && requestSecret.equals(internalSecret)) {
+            filterChain.doFilter(request, response);
             return;
         }
 
+        // Không có secret — request từ mobile/gateway, tiếp tục chuỗi filter bình thường
+        // JwtAuthenticationFilter sẽ xử lý authentication
         filterChain.doFilter(request, response);
     }
 }

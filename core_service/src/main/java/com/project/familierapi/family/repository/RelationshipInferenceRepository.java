@@ -9,10 +9,12 @@ import java.util.Optional;
 
 public interface RelationshipInferenceRepository extends JpaRepository<RelationshipInference, Long> {
     List<RelationshipInference> findByFamilyId(String familyId);
-    
-    Optional<RelationshipInference> findByUser1EmailAndUser2Email(String user1Email, String user2Email);
-    
+
+    Optional<RelationshipInference> findFirstByUser1EmailAndUser2Email(String user1Email, String user2Email);
+
     List<RelationshipInference> findByUser1Email(String user1Email);
-    
-    Optional<RelationshipInference> findByUser1EmailAndRelationType(String user1Email, Relationship relationType);
+
+    Optional<RelationshipInference> findFirstByUser1EmailAndRelationType(String user1Email, Relationship relationType);
+
+    Optional<RelationshipInference> findFirstByUser2EmailAndRelationType(String user2Email, Relationship relationType);
 }

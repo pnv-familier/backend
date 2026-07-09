@@ -53,37 +53,44 @@ public class AiUserProfileController {
     public ResponseEntity<UserProfileWithRelationDto> getUserProfileWithRelation(
             @RequestParam String currentUserEmail,
             @RequestParam String targetUserEmail) {
-        log.info("REST request for user profile with relation: current={}, target={}", currentUserEmail, targetUserEmail);
-        
+
         return userRepository.findByEmail(targetUserEmail)
                 .map(targetUser -> {
                     UserProfileWithRelationDto dto = UserProfileWithRelationDto.builder()
                             .email(targetUser.getEmail())
                             .fullName(targetUser.getFullName() != null ? targetUser.getFullName() : "")
-                            .birthday(targetUser.getDateOfBirth() != null 
-                                    ? targetUser.getDateOfBirth().format(DateTimeFormatter.ISO_LOCAL_DATE) 
+                            .birthday(targetUser.getDateOfBirth() != null
+                                    ? targetUser.getDateOfBirth().format(DateTimeFormatter.ISO_LOCAL_DATE)
                                     : "")
                             .gender(targetUser.getGender() != null ? targetUser.getGender().name() : "")
                             .build();
-                    
+
                     try {
-                        String hobbiesJson = targetUser.getHobbies() != null 
-                                ? objectMapper.writeValueAsString(targetUser.getHobbies()) 
+                        String hobbiesJson = targetUser.getHobbies() != null
+                                ? objectMapper.writeValueAsString(targetUser.getHobbies())
                                 : "[]";
                         dto.setHobbies(hobbiesJson);
                     } catch (Exception e) {
                         log.error("Error serializing hobbies JSON", e);
                         dto.setHobbies("[]");
                     }
-                    
-                    // Get relationship from current user perspective
+
                     if (currentUserEmail.equals(targetUserEmail)) {
                         dto.setRelationType("SELF");
                     } else {
-                        relationshipInferenceRepository.findByUser1EmailAndUser2Email(currentUserEmail, targetUserEmail)
-                                .ifPresent(relation -> dto.setRelationType(relation.getRelationType().name()));
+                        relationshipInferenceRepository
+                                .findFirstByUser1EmailAndUser2Email(currentUserEmail, targetUserEmail)
+                                .ifPresent(relation -> {
+                                    String targetGender = targetUser.getGender() != null
+                                            ? targetUser.getGender().name() : "OTHER";
+                                    com.project.familierapi.family.domain.Relationship reversed =
+                                            getReverseRelationship(relation.getRelationType(), targetGender);
+                                    dto.setRelationType(reversed != null
+                                            ? reversed.name()
+                                            : relation.getRelationType().name());
+                                });
                     }
-                    
+
                     return ResponseEntity.ok(dto);
                 })
                 .orElse(ResponseEntity.notFound().build());
@@ -93,8 +100,7 @@ public class AiUserProfileController {
     public ResponseEntity<Map<String, String>> mapRelationToEmail(
             @RequestParam String currentUserEmail,
             @RequestParam String relationType) {
-        log.info("REST request to map relation to email: user={}, relation={}", currentUserEmail, relationType);
-        
+
         return relationshipMappingService.mapRelationToEmail(currentUserEmail, relationType)
                 .map(targetEmail -> {
                     Map<String, String> response = new HashMap<>();
@@ -102,5 +108,22 @@ public class AiUserProfileController {
                     return ResponseEntity.ok(response);
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    private com.project.familierapi.family.domain.Relationship getReverseRelationship(
+            com.project.familierapi.family.domain.Relationship rel, String targetGender) {
+        if (rel == null) return null;
+        boolean isMale = "MALE".equals(targetGender);
+        return switch (rel) {
+            case FATHER, MOTHER -> isMale ? com.project.familierapi.family.domain.Relationship.SON
+                    : com.project.familierapi.family.domain.Relationship.DAUGHTER;
+            case SON, DAUGHTER -> isMale ? com.project.familierapi.family.domain.Relationship.FATHER
+                    : com.project.familierapi.family.domain.Relationship.MOTHER;
+            case BROTHER, SISTER -> isMale ? com.project.familierapi.family.domain.Relationship.BROTHER
+                    : com.project.familierapi.family.domain.Relationship.SISTER;
+            case GRANDFATHER, GRANDMOTHER -> isMale ? com.project.familierapi.family.domain.Relationship.SON
+                    : com.project.familierapi.family.domain.Relationship.DAUGHTER;
+            case SPOUSE -> com.project.familierapi.family.domain.Relationship.SPOUSE;
+        };
     }
 }

@@ -8,8 +8,7 @@ import java.util.Optional;
 
 public interface FamilyMemberRepository extends JpaRepository<FamilyMember, Long> {
     Optional<FamilyMember> findByUserId(String userId);
-    
+    Optional<FamilyMember> findByUserEmail(String email);
     List<FamilyMember> findByFamilyIdOrderByJoinedAt(String familyId);
-    
     boolean existsByUserId(String userId);
 }
