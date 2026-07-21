@@ -40,7 +40,7 @@ public class SummarizationService {
     private final ObjectMapper objectMapper;
     private static final Pattern JSON_PATTERN = Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}");
 
-    @Value("${gemini.api-key}")
+    @Value("${spring.ai.google.genai.api-key}")
     private String API_KEY;
 
     @Value("${gemini.timeout:120}")
