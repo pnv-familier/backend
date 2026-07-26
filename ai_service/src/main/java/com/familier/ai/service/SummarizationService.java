@@ -38,6 +38,7 @@ public class SummarizationService {
     private final UserContextRepository userContextRepository;
     private final UserProvider userProvider;
     private final ObjectMapper objectMapper;
+    private final QdrantSyncService qdrantSyncService;
     private static final Pattern JSON_PATTERN = Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}");
 
     @Value("${spring.ai.google.genai.api-key}")
@@ -59,7 +60,8 @@ public class SummarizationService {
                             ChatMessageRepository chatMessageRepository,
                             UserContextRepository userContextRepository,
                             UserProvider userProvider,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            QdrantSyncService qdrantSyncService) {
 
     HttpClient httpClient = HttpClient.create()
             .responseTimeout(Duration.ofSeconds(60));
@@ -74,19 +76,20 @@ public class SummarizationService {
     this.userContextRepository = userContextRepository;
     this.userProvider = userProvider;
     this.objectMapper = objectMapper;
+    this.qdrantSyncService = qdrantSyncService;
 }
-    public void summarizeAllOldActiveSessions() {
+    public Mono<Void> summarizeAllOldActiveSessions() {
         java.time.Instant idleThreshold = java.time.Instant.now().minus(idleMinutes, java.time.temporal.ChronoUnit.MINUTES);
         log.info("[Summarization] Triggered — idleThreshold={}, concurrency={}", idleThreshold, concurrency);
 
-        chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", idleThreshold)
+        return chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", idleThreshold)
                 .flatMap(session -> {
                     log.info("[Summarization] Queued session={} user={}", session.getId(), session.getUserEmail());
                     return summarizeSession(session.getId(), session.getUserEmail())
                             .doOnError(e -> log.error("Gemini error", e));
                 }, concurrency)
-                .doOnComplete(() -> log.info("[Summarization] All sessions processed"))
-                .subscribe();
+                .then()
+                .doOnSuccess(v -> log.info("[Summarization] All sessions processed"));
     }
 
     public Mono<Void> summarizeSession(String sessionId, String userEmail) {
@@ -105,9 +108,9 @@ public class SummarizationService {
                                             sessionId, Sender.USER, lastSummarized)
                                     .collectList()
                                     .flatMap(newMessages -> {
-                                        if (newMessages.isEmpty() || newMessages.size() < 2) {
-                                            log.info("[Summarization] Skipped session={} — not enough new messages (count={})",
-                                                    sessionId, newMessages.size());
+                                        if (newMessages.isEmpty()) {
+                                            log.info("[Summarization] Skipped session={} — no new messages",
+                                                    sessionId);
                                             return Mono.empty();
                                         }
                                         log.info("[Summarization] Calling Gemini session={} newMessageCount={}",
@@ -296,6 +299,14 @@ public class SummarizationService {
                         }))
                 .doOnNext(ctx -> log.info("[Summarization] UserContext saved for user={} totalFacts={}",
                         userEmail, ctx.getFacts().size()))
+                .flatMap(savedCtx ->
+                    qdrantSyncService.syncPendingFacts(userEmail)
+                        .then(qdrantSyncService.syncSessionSummary(session, userEmail))
+                        .onErrorResume(e -> {
+                            log.error("[Summarization] Qdrant sync failed for user={}, will retry next cycle", userEmail, e);
+                            return Mono.empty();
+                        })
+                )
                 .then();
     }
 

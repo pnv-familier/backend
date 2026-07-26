@@ -29,6 +29,7 @@ import reactor.core.publisher.Mono;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -76,6 +77,8 @@ public class AiController {
             @RequestParam(required = false) String sessionId,
             @RequestHeader(name = "X-User-Email") String email) throws Exception {
 
+        String requestId = UUID.randomUUID().toString();
+
         return chatService.getOrCreateSession(sessionId, message, email)
                 .flatMap(session -> {
                     if (useMock) {
@@ -86,13 +89,13 @@ public class AiController {
                                     .header("X-Session-Id", session.getId())
                                     .body(chatService.saveUserMessage(session.getId(), message)
                                             .flatMapMany(saved -> executeAiStream(
-                                                    session.getId(), message, basicPrompt, email))));
+                                                    requestId, session.getId(), message, basicPrompt, email))));
                         } catch (Exception e) {
                             return Mono.error(e);
                         }
                     }
 
-                    return contextManagerService.buildSessionContext(email, session.getId())
+                    return contextManagerService.buildSessionContext(requestId, email, session.getId(), message)
                             .flatMap(vars -> {
                                 try {
                                     String systemPrompt = promptService.loadSystemPrompt(
@@ -101,7 +104,8 @@ public class AiController {
                                             .header("X-Session-Id", session.getId())
                                             .body(chatService.saveUserMessage(session.getId(), message)
                                                     .flatMapMany(saved -> executeAiStream(
-                                                            session.getId(), message, systemPrompt, email))));
+                                                            requestId, session.getId(), message, systemPrompt,
+                                                            email))));
                                 } catch (Exception e) {
                                     return Mono.error(e);
                                 }
@@ -113,14 +117,14 @@ public class AiController {
     // Stream execution + AiStreamProcessor
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Flux<ServerSentEvent<String>> executeAiStream(String sessionId, String message,
+    private Flux<ServerSentEvent<String>> executeAiStream(String requestId, String sessionId, String message,
             String systemPrompt, String userEmail) {
 
         AiStreamProcessor processor = new AiStreamProcessor(sessionId, userEmail);
 
         Flux<ServerSentEvent<String>> aiStream = useMock
                 ? fakeService.streamGenerateContent(systemPrompt, message)
-                : aiFacadeService.streamChat(systemPrompt, message, userEmail);
+                : aiFacadeService.streamChat(requestId, sessionId, systemPrompt, message, userEmail);
 
         return aiStream
                 .concatMap(processor::process)
@@ -180,9 +184,11 @@ public class AiController {
 
             while (residualBuffer.length() > 0) {
                 if (currentTag == null) {
-                    if (!findAndProcessTagStart(events)) break;
+                    if (!findAndProcessTagStart(events))
+                        break;
                 } else {
-                    if (!findAndProcessTagEnd(events)) break;
+                    if (!findAndProcessTagEnd(events))
+                        break;
                 }
             }
             return Flux.fromIterable(events);
@@ -296,7 +302,8 @@ public class AiController {
     // ─────────────────────────────────────────────────────────────────────────
 
     private String decodeHtmlEntities(String text) {
-        if (text == null) return null;
+        if (text == null)
+            return null;
         String decoded = text;
         for (int i = 0; i < 3; i++) {
             String temp = decoded
@@ -304,14 +311,16 @@ public class AiController {
                     .replace("&lt;", "<").replace("&gt;", ">")
                     .replace("&#39;", "'").replace("&#x27;", "'")
                     .replace("&#x2F;", "/");
-            if (temp.equals(decoded)) break;
+            if (temp.equals(decoded))
+                break;
             decoded = temp;
         }
         return decoded;
     }
 
     private List<String> parseSuggestionsArray(String suggestionsJson) {
-        if (suggestionsJson == null || suggestionsJson.trim().isEmpty()) return null;
+        if (suggestionsJson == null || suggestionsJson.trim().isEmpty())
+            return null;
         try {
             String[] array = objectMapper.readValue(decodeHtmlEntities(suggestionsJson), String[].class);
             return Arrays.asList(array);
@@ -350,8 +359,8 @@ public class AiController {
     }
 
     @PostMapping("/summarization")
-    public ResponseEntity<Void> triggerSummarization() {
-        summarizationService.summarizeAllOldActiveSessions();
-        return ResponseEntity.accepted().build();
+    public Mono<ResponseEntity<Void>> triggerSummarization() {
+        return summarizationService.summarizeAllOldActiveSessions()
+                .thenReturn(ResponseEntity.accepted().build());
     }
 }

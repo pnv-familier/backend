@@ -25,6 +25,8 @@ public class SummarizationScheduler {
         }
 
         log.info("Starting scheduled summarization task");
-        summarizationService.summarizeAllOldActiveSessions();
+        summarizationService.summarizeAllOldActiveSessions()
+                .doOnError(e -> log.error("Failed scheduled summarization task", e))
+                .subscribe();
     }
 }

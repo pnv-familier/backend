@@ -30,4 +30,6 @@ public class ChatSession {
     private String status = "ACTIVE";
     private Instant lastUpdate;
     private Instant lastSummarizedAt;
+    // "PENDING" = summary not yet embedded in Qdrant | "INDEXED" = successfully stored
+    private String qdrantSyncStatus;
 }
