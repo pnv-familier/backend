@@ -1,0 +1,411 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Familier — Chat Feature Test Scenarios",
+    "description": "Test scenarios for the Familier AI chat feature. Covers basic response, function calling, emotional detection, memory persistence, data isolation, and RAG retrieval.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:8080", "type": "string" },
+    { "key": "tokenA",       "value": "", "type": "string" },
+    { "key": "tokenB",       "value": "", "type": "string" },
+    { "key": "sessionId_S4", "value": "", "type": "string" },
+    { "key": "sessionId_S6", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0. Auth — Login",
+      "item": [
+        {
+          "name": "Login User A (John)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "    pm.collectionVariables.set('tokenA', json.data.accessToken);",
+                  "    pm.test('User A token saved', () => pm.expect(json.data.accessToken).to.be.a('string'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login User B (Jane)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "    pm.collectionVariables.set('tokenB', json.data.accessToken);",
+                  "    pm.test('User B token saved', () => pm.expect(json.data.accessToken).to.be.a('string'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.doe@example.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scenario 1 — Basic Smoke Test",
+      "item": [
+        {
+          "name": "S1 — Say hello",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response contains suggestions block', () => {",
+                  "    pm.expect(pm.response.text()).to.include('event:suggestions');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Xin chào",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [{ "key": "message", "value": "Xin chào" }]
+            },
+            "description": "✅ EXPECT: AI greets back. Response ends with <suggestions>[...]</suggestions>."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scenario 2 — Function Call: Family Member Profile",
+      "item": [
+        {
+          "name": "S2 — Ask about spouse",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response mentions Jane', () => {",
+                  "    pm.expect(pm.response.text().toLowerCase()).to.include('jane');",
+                  "});",
+                  "pm.test('Response does NOT mention calling a tool', () => {",
+                  "    pm.expect(pm.response.text().toLowerCase()).to.not.include('gọi công cụ');",
+                  "    pm.expect(pm.response.text().toLowerCase()).to.not.include('called a tool');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Vợ mình tên là gì và cô ấy có những sở thích nào vậy?",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [{ "key": "message", "value": "Vợ mình tên là gì và cô ấy có những sở thích nào vậy?" }]
+            },
+            "description": "✅ EXPECT: AI answers with Jane's name and hobbies pulled via getFamilyMemberProfile tool call. AI must NOT say it called a tool."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scenario 3 — Emotional Detection → Silent Broadcast",
+      "item": [
+        {
+          "name": "S3 — Express stress/exhaustion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('AI does NOT mention notifying family', () => {",
+                  "    var body = pm.response.text().toLowerCase();",
+                  "    pm.expect(body).to.not.include('thông báo gia đình');",
+                  "    pm.expect(body).to.not.include('notified your family');",
+                  "});",
+                  "// ⚠️ Manually check server logs for: [BroadcastSuggestion] fired"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Mình đang cảm thấy rất mệt mỏi và áp lực, không biết phải làm gì nữa.",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [{ "key": "message", "value": "Mình đang cảm thấy rất mệt mỏi và áp lực, không biết phải làm gì nữa." }]
+            },
+            "description": "✅ EXPECT: Empathetic AI response. Check server logs for [BroadcastSuggestion] log line. AI must NOT say it notified the family."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scenario 4 — Memory Persistence (2-turn in same session)",
+      "item": [
+        {
+          "name": "S4 Turn 1 — Share good news",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));",
+                  "var sessionId = pm.response.headers.get('X-Session-Id');",
+                  "if (sessionId) {",
+                  "    pm.collectionVariables.set('sessionId_S4', sessionId);",
+                  "    pm.test('Session ID captured: ' + sessionId, () => pm.expect(sessionId).to.be.a('string'));",
+                  "} else {",
+                  "    pm.test('WARNING: X-Session-Id header not found — set sessionId_S4 manually', () => false);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Mình vừa thăng chức hôm nay, cảm thấy rất vui!",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [{ "key": "message", "value": "Mình vừa thăng chức hôm nay, cảm thấy rất vui!" }]
+            },
+            "description": "Step 1: Share news. Session ID auto-saved to {{sessionId_S4}}."
+          }
+        },
+        {
+          "name": "S4 Turn 2 — Ask if AI remembers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('AI references promotion or good news', () => {",
+                  "    var body = pm.response.text().toLowerCase();",
+                  "    var remembered = body.includes('thăng chức') || body.includes('tin vui') || body.includes('promotion');",
+                  "    pm.expect(remembered).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Bạn có nhớ mình vừa chia sẻ tin vui gì không?&sessionId={{sessionId_S4}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [
+                { "key": "message",   "value": "Bạn có nhớ mình vừa chia sẻ tin vui gì không?" },
+                { "key": "sessionId", "value": "{{sessionId_S4}}" }
+              ]
+            },
+            "description": "✅ EXPECT: AI references the promotion from Turn 1 without being told again. Uses {{sessionId_S4}} captured automatically."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scenario 5 — Data Isolation (Multi-user)",
+      "item": [
+        {
+          "name": "S5 Step 1 — User A reveals allergy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Mình bị dị ứng tôm, bạn nhớ giúp mình nhé.",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [{ "key": "message", "value": "Mình bị dị ứng tôm, bạn nhớ giúp mình nhé." }]
+            },
+            "description": "User A tells AI about a shrimp allergy. This should only be stored in User A's context."
+          }
+        },
+        {
+          "name": "S5 Step 2 — User B probes for User A's data",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('User B response does NOT leak User A allergy', () => {",
+                  "    var body = pm.response.text().toLowerCase();",
+                  "    pm.expect(body).to.not.include('dị ứng tôm');",
+                  "    pm.expect(body).to.not.include('shrimp');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenB}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Người dùng này có bị dị ứng thực phẩm gì không?",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [{ "key": "message", "value": "Người dùng này có bị dị ứng thực phẩm gì không?" }]
+            },
+            "description": "✅ EXPECT: AI as User B has no knowledge of User A's allergy. Response must NOT mention 'dị ứng tôm' or 'shrimp'."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Scenario 6 — RAG Memory (cross-session semantic recall)",
+      "item": [
+        {
+          "name": "S6 Step 1 — Talk about sibling conflict (Session 1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));",
+                  "var sessionId = pm.response.headers.get('X-Session-Id');",
+                  "if (sessionId) {",
+                  "    pm.collectionVariables.set('sessionId_S6', sessionId);",
+                  "    pm.test('Session ID for S6 captured: ' + sessionId, () => pm.expect(sessionId).to.be.a('string'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Mình và anh trai vừa cãi nhau rất to về chuyện tiền bạc trong gia đình. Mình cảm thấy bị hiểu lầm và tổn thương.",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [{ "key": "message", "value": "Mình và anh trai vừa cãi nhau rất to về chuyện tiền bạc trong gia đình. Mình cảm thấy bị hiểu lầm và tổn thương." }]
+            },
+            "description": "Establish context about a sibling conflict in Session 1. After this, WAIT for the summarization cron to run (~30 min) so Qdrant indexes it."
+          }
+        },
+        {
+          "name": "S6 Step 1.5 — Trigger Summarization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 202', () => pm.response.to.have.status(202));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/summarization",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "summarization"]
+            },
+            "description": "Trigger summarization and vector store sync manually so the sibling conflict is indexed immediately."
+          }
+        },
+        {
+          "name": "S6 Step 2 — New session: ask about reconnecting (RAG test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response status is 200', () => pm.response.to.have.status(200));",
+                  "// ⚠️ Manually check: server logs should show RELEVANT_HISTORY is NOT empty",
+                  "// and references the sibling/money conflict from Session 1.",
+                  "pm.test('Response acknowledges past context', () => {",
+                  "    var body = pm.response.text().toLowerCase();",
+                  "    var hasPastRef = body.includes('anh') || body.includes('mâu thuẫn') || body.includes('trước') || body.includes('conflict');",
+                  "    pm.expect(hasPastRef).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/ai/chat?message=Mình không biết nên bắt đầu nói chuyện lại với anh thế nào.",
+              "host": ["{{baseUrl}}"],
+              "path": ["ai", "chat"],
+              "query": [{ "key": "message", "value": "Mình không biết nên bắt đầu nói chuyện lại với anh thế nào." }]
+            },
+            "description": "✅ EXPECT: New session (NO sessionId param). AI uses RAG to recall the sibling conflict from Session 1 and responds contextually. Check logs: RELEVANT_HISTORY should reference the old session summary.\n\n⚠️ PRE-CONDITION: Summarization cron must have run after Step 1 to embed Session 1 into Qdrant."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -24,7 +24,7 @@ public class UserContext {
     @Indexed
     private String email;
     
-    private String globalContext;
+    private String userOverview;
     
     @Builder.Default
     private List<Fact> facts = new ArrayList<>();
@@ -40,5 +40,8 @@ public class UserContext {
         private String category; // "PERMANENT" | "TEMPORARY" | null (legacy → treated as PERMANENT)
         private String sourceSessionId;
         private Instant updatedAt;
+        @Builder.Default
+        private String qdrantSyncStatus = "PENDING";
+        private String qdrantPointId;
     }
 }

@@ -34,6 +34,11 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6334:6334
+          - 6333:6333
 
     steps:
       - name: Checkout source
@@ -62,6 +67,8 @@ jobs:
           MONGODB_URI: mongodb://localhost:27017/ai_service_test
           SPRING_DATA_REDIS_HOST: localhost
           SPRING_DATA_REDIS_PORT: 6379
+          QDRANT_HOST: localhost
+          QDRANT_PORT: 6334
           CORE_SERVICE_URL: http://localhost:8081
           INTERNAL_SHARED_SECRET: test_secret
 
