@@ -63,6 +63,18 @@ Start Qdrant (required for AI memory):
 docker run -d -p 6333:6333 -p 6334:6334 -v "${PWD}\qdrant_storage:/qdrant/storage" qdrant/qdrant
 ```
 
+Then create the Qdrant collection manually before starting the ai_service (embedding model uses 768 dimensions):
+```bash
+curl -X PUT http://localhost:6333/collections/familier_context \
+  -H "Content-Type: application/json" \
+  -d '{"vectors": {"size": 768, "distance": "Cosine"}}'
+```
+
+> If the collection already exists with a different dimension (e.g. 3072), delete it first:
+> ```bash
+> curl -X DELETE http://localhost:6333/collections/familier_context
+> ```
+
 ### 3. Run services
 
 ```bash

@@ -76,6 +76,7 @@ public class ContextManagerService {
             SearchRequest request = SearchRequest.builder()
                     .query(query)
                     .topK(topK)
+                    .similarityThreshold(0.7)
                     .filterExpression("email == '" + email + "'")
                     .build();
             log.debug("[RAG_SEARCH] requestId={} userId={} currentSessionId={} topK={} scoreThreshold={}",
