@@ -23,7 +23,7 @@ public class RestUserProvider implements UserProvider {
     private final String internalSecret;
 
     public RestUserProvider(WebClient.Builder webClientBuilder, 
-                            @Value("${CORE_SERVICE_URL}") String coreServiceUrl,
+                            @Value("${CORE_SERVICE_URL:http://localhost:8081}") String coreServiceUrl,
                             @Value("${application.security.internal.secret}") String internalSecret) {
         this.internalSecret = internalSecret;
         HttpClient httpClient = HttpClient.create()

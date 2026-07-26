@@ -29,29 +29,32 @@ public class RelationMappingService {
     private static final Duration CACHE_TTL = Duration.ofHours(1);
 
     public RelationMappingService(WebClient.Builder webClientBuilder,
-                                  @Qualifier("reactiveRedisTemplate") ReactiveRedisTemplate<String, String> redisTemplate) {
+            @Qualifier("reactiveRedisTemplate") ReactiveRedisTemplate<String, String> redisTemplate) {
         this.webClient = webClientBuilder.build();
         this.redisTemplate = redisTemplate;
     }
 
     public Mono<String> mapRelationToEmail(String currentUserEmail, String relationType) {
         String cacheKey = CACHE_PREFIX + currentUserEmail + ":" + relationType;
-        
+
         return redisTemplate.opsForValue().get(cacheKey)
                 .doOnNext(cached -> log.debug("Cache hit for relation mapping: {}", cacheKey))
-                .switchIfEmpty(fetchFromCoreService(currentUserEmail, relationType, cacheKey))
+                .switchIfEmpty(fetchFromCoreService(currentUserEmail, relationType, cacheKey, true))
                 .onErrorResume(e -> {
-                    log.error("Error mapping relation to email", e);
-                    return Mono.just("");
+                    log.warn(
+                            "Redis unavailable for relation mapping cache, bypassing cache for user={} relationType={}: {}",
+                            currentUserEmail, relationType, e.getMessage());
+                    return fetchFromCoreService(currentUserEmail, relationType, cacheKey, false);
                 });
     }
 
-    private Mono<String> fetchFromCoreService(String currentUserEmail, String relationType, String cacheKey) {
+    private Mono<String> fetchFromCoreService(String currentUserEmail, String relationType, String cacheKey,
+            boolean cacheResult) {
         String url = UriComponentsBuilder.fromHttpUrl(coreServiceUrl + "/ai/map-relation-to-email")
                 .queryParam("currentUserEmail", currentUserEmail)
                 .queryParam("relationType", relationType)
                 .toUriString();
-        
+
         return webClient.get()
                 .uri(url)
                 .header("X-Internal-Secret", internalSecret)
@@ -59,18 +62,26 @@ public class RelationMappingService {
                 .onStatus(
                         status -> status.value() == 404,
                         response -> {
-                            log.debug("No relation mapping found for user={} relationType={}", currentUserEmail, relationType);
+                            log.debug("No relation mapping found for user={} relationType={}", currentUserEmail,
+                                    relationType);
                             return Mono.error(new NoSuchFieldException("not_found"));
-                        }
-                )
+                        })
                 .bodyToMono(Map.class)
                 .map(response -> (String) response.get("targetEmail"))
                 .flatMap(targetEmail -> {
                     if (targetEmail == null || targetEmail.isEmpty()) {
                         return Mono.empty();
                     }
+                    if (!cacheResult) {
+                        return Mono.just(targetEmail);
+                    }
                     return redisTemplate.opsForValue()
                             .set(cacheKey, targetEmail, CACHE_TTL)
+                            .onErrorResume(cacheError -> {
+                                log.warn("Failed to cache relation mapping for user={} relationType={}: {}",
+                                        currentUserEmail, relationType, cacheError.getMessage());
+                                return Mono.just(false);
+                            })
                             .thenReturn(targetEmail);
                 })
                 .onErrorResume(e -> {

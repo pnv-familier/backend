@@ -1,70 +1,119 @@
-# 👋 Welcome to Familier
+# Familier — Backend
 
-**Familier** is a platform designed to help strengthen intimacy in modern digital families by using **Generative AI** as a supportive tool, not a replacement for real human connection.
-
-The goal of Familier is to **encourage meaningful interaction**, not empty or automated communication.
+**Familier** helps modern families stay emotionally connected through an AI companion that listens, remembers, and gently encourages real human interactions — not replaces them.
 
 ---
 
-## 🏗️ Project Overview
+## What it does (Business View)
 
-This repository contains the **backend service** of the Familier system.
-
-**Tech stack:**
-- Java
-- Spring Boot
-- Modular Monolith Architecture
-- RESTful API
-- OpenAPI (Swagger)
-- (Planned) Gemini API integration
+- **AI Family Companion** — A conversational AI that knows the user's family context (relationships, ongoing conflicts, milestones) and responds with empathy.
+- **Long-term Memory** — Learns from every conversation. Extracts facts and summaries, stores them, and recalls them semantically when relevant (RAG).
+- **Family Nudges** — When the AI senses loneliness, stress, or a big win, it quietly notifies family members so they can reach out.
+- **Task Coordination** — Users can ask the AI to create care tasks for specific family members.
 
 ---
 
-## 🚀 Getting Started
+## Architecture
+
+| Service | Purpose | Port |
+|---|---|---|
+| `gateway` | API Gateway — entry point for all clients | 8080 |
+| `core_service` | User auth, family management, profiles (MySQL) | 8081 |
+| `ai_service` | AI chat, memory, RAG, summarization (MongoDB + Qdrant) | 8082 |
+
+**Infrastructure:**
+- MySQL — core relational data (users, families, tasks)
+- MongoDB — AI session data, user context, extracted facts
+- Qdrant — vector embeddings for semantic memory (RAG)
+- Redis — session caching
+- Google Gemini — LLM for chat + summarization + embeddings
+
+---
+
+## Running Locally
 
 ### Prerequisites
 - Java 17+
 - Maven
+- Docker & Docker Compose
 
-### Installation & Run
+### 1. Set environment variables
 
-Clone the repository and start the application:
+Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
-git clone https://github.com/pnv-familier/backend
-cd backend
-mvn spring-boot:run
-```
-### 🔍 Health Check
-After the application starts, verify it is running correctly:
-
-Health endpoint:
-http://localhost:8080/actuator/health
-
-### 📄 API Documentation
-Swagger UI (API-first approach):
-
-http://localhost:8080/swagger-ui/index.html
-
-### 📂 Project Structure
-The backend follows a modular monolith architecture:
-```
-module/
-shared/   → cross-cutting concerns (security, exception, config)
+cp .env.example .env
 ```
 
+Key variables:
+```
+GEMINI_API_KEY=your_google_gemini_api_key
+JWT_SECRET=your_jwt_secret
+INTERNAL_SHARED_SECRET=your_internal_secret
+```
 
-### 📌 Development Notes
-- Business logic lives in the service layer
+### 2. Start infrastructure
 
-- Controllers are thin and handle HTTP concerns only
+```bash
+docker compose up -d mysql mongodb
+```
 
-- All exceptions are handled globally
+Start Qdrant (required for AI memory):
+```bash
+docker run -d -p 6333:6333 -p 6334:6334 -v "${PWD}\qdrant_storage:/qdrant/storage" qdrant/qdrant
+```
 
-- External services (e.g. AI APIs) are isolated behind adapters
+Then create the Qdrant collection manually before starting the ai_service (embedding model uses 768 dimensions):
+```bash
+curl -X PUT http://localhost:6333/collections/familier_context \
+  -H "Content-Type: application/json" \
+  -d '{"vectors": {"size": 768, "distance": "Cosine"}}'
+```
 
-### For detailed rules, see:
+> If the collection already exists with a different dimension (e.g. 3072), delete it first:
+> ```bash
+> curl -X DELETE http://localhost:6333/collections/familier_context
+> ```
 
-[BACKEND_GUIDELINE.md](docs/GUIDELINE.md)
+### 3. Run services
 
-[CONTRIBUTING.md](https://github.com/pnv-familier/conventions/blob/main/github/CONTRIBUTING.md)
+```bash
+# Core service
+cd core_service && mvn spring-boot:run
+
+# AI service (separate terminal)
+cd ai_service && mvn spring-boot:run
+
+# Gateway (separate terminal)
+cd gateway && mvn spring-boot:run
+```
+
+Or run everything with Docker:
+```bash
+docker compose up --build
+```
+
+### 4. Verify
+
+| Check | URL |
+|---|---|
+| Gateway health | http://localhost:8080/actuator/health |
+| Core service health | http://localhost:8081/actuator/health |
+| AI service health | http://localhost:8082/actuator/health |
+| Qdrant dashboard | http://localhost:6333/dashboard |
+
+---
+
+## Database Migrations
+
+MongoDB field migration scripts are stored in:
+```
+ai_service/src/main/resources/db/migration/
+```
+
+Run them in order before deploying a new build to a cloud environment:
+```bash
+mongosh <your_mongodb_uri> --file V1__rename_user_context_global_context.js
+mongosh <your_mongodb_uri> --file V2__rename_fact_indexed_status.js
+mongosh <your_mongodb_uri> --file V3__rename_session_summary_indexed_status.js
+```

@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import reactor.netty.http.client.HttpClient;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import java.time.Duration;
@@ -38,9 +40,10 @@ public class SummarizationService {
     private final UserContextRepository userContextRepository;
     private final UserProvider userProvider;
     private final ObjectMapper objectMapper;
+    private final QdrantSyncService qdrantSyncService;
     private static final Pattern JSON_PATTERN = Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}");
 
-    @Value("${gemini.api-key}")
+    @Value("${spring.ai.google.genai.api-key}")
     private String API_KEY;
 
     @Value("${gemini.timeout:120}")
@@ -52,73 +55,92 @@ public class SummarizationService {
     @Value("${app.summarization.idle-minutes:5}")
     private int idleMinutes;
 
-    
+    private final Set<String> activeSessionSummaries = ConcurrentHashMap.newKeySet();
 
     public SummarizationService(WebClient.Builder webClientBuilder,
-                            ChatSessionRepository chatSessionRepository,
-                            ChatMessageRepository chatMessageRepository,
-                            UserContextRepository userContextRepository,
-                            UserProvider userProvider,
-                            ObjectMapper objectMapper) {
+            ChatSessionRepository chatSessionRepository,
+            ChatMessageRepository chatMessageRepository,
+            UserContextRepository userContextRepository,
+            UserProvider userProvider,
+            ObjectMapper objectMapper,
+            QdrantSyncService qdrantSyncService) {
 
-    HttpClient httpClient = HttpClient.create()
-            .responseTimeout(Duration.ofSeconds(60));
+        HttpClient httpClient = HttpClient.create()
+                .responseTimeout(Duration.ofSeconds(60));
 
-    this.webClient = webClientBuilder
-            .baseUrl("https://generativelanguage.googleapis.com")
-            .clientConnector(new ReactorClientHttpConnector(httpClient))
-            .build();
+        this.webClient = webClientBuilder
+                .baseUrl("https://generativelanguage.googleapis.com")
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build();
 
-    this.chatSessionRepository = chatSessionRepository;
-    this.chatMessageRepository = chatMessageRepository;
-    this.userContextRepository = userContextRepository;
-    this.userProvider = userProvider;
-    this.objectMapper = objectMapper;
-}
-    public void summarizeAllOldActiveSessions() {
-        java.time.Instant idleThreshold = java.time.Instant.now().minus(idleMinutes, java.time.temporal.ChronoUnit.MINUTES);
+        this.chatSessionRepository = chatSessionRepository;
+        this.chatMessageRepository = chatMessageRepository;
+        this.userContextRepository = userContextRepository;
+        this.userProvider = userProvider;
+        this.objectMapper = objectMapper;
+        this.qdrantSyncService = qdrantSyncService;
+    }
+
+    public Mono<Void> summarizeAllOldActiveSessions() {
+        java.time.Instant idleThreshold = java.time.Instant.now().minus(idleMinutes,
+                java.time.temporal.ChronoUnit.MINUTES);
         log.info("[Summarization] Triggered — idleThreshold={}, concurrency={}", idleThreshold, concurrency);
 
-        chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", idleThreshold)
+        return chatSessionRepository.findAllByStatusAndLastUpdateBefore("ACTIVE", idleThreshold)
                 .flatMap(session -> {
                     log.info("[Summarization] Queued session={} user={}", session.getId(), session.getUserEmail());
                     return summarizeSession(session.getId(), session.getUserEmail())
-                            .doOnError(e -> log.error("Gemini error", e));
+                            .onErrorResume(e -> Mono.empty());
                 }, concurrency)
-                .doOnComplete(() -> log.info("[Summarization] All sessions processed"))
-                .subscribe();
+                .then()
+                .doOnSuccess(v -> log.info("[Summarization] All sessions processed"));
     }
 
     public Mono<Void> summarizeSession(String sessionId, String userEmail) {
-        log.info("[Summarization] Starting session={} user={}", sessionId, userEmail);
-        return userProvider.getUserProfile(userEmail)
-                .flatMap(userProfile -> chatSessionRepository.findById(sessionId)
-                        .flatMap(session -> {
-                            String currentSummary = session.getSummary() != null ? session.getSummary() : "";
-                            Instant lastSummarized = session.getLastSummarizedAt() != null ?
-                                    session.getLastSummarizedAt() : session.getCreatedAt();
-                            log.debug("[Summarization] session={} lastSummarizedAt={} hasPreviousSummary={}",
-                                    sessionId, lastSummarized, !currentSummary.isEmpty());
+        if (!activeSessionSummaries.add(sessionId)) {
+            logSummaryTrace(sessionId, 0, null, null, "SKIPPED", "already_processing");
+            return Mono.empty();
+        }
 
-                            return chatMessageRepository
-                                    .findAllBySessionIdAndSenderAndTimestampAfterOrderByTimestampAsc(
-                                            sessionId, Sender.USER, lastSummarized)
-                                    .collectList()
-                                    .flatMap(newMessages -> {
-                                        if (newMessages.isEmpty() || newMessages.size() < 2) {
-                                            log.info("[Summarization] Skipped session={} — not enough new messages (count={})",
-                                                    sessionId, newMessages.size());
-                                            return Mono.empty();
-                                        }
-                                        log.info("[Summarization] Calling Gemini session={} newMessageCount={}",
-                                                sessionId, newMessages.size());
+        return chatSessionRepository.findById(sessionId)
+                .flatMap(session -> {
+                    Instant previousCheckpoint = session.getLastSummarizedAt() != null
+                            ? session.getLastSummarizedAt()
+                            : session.getCreatedAt();
+                    String currentSummary = session.getSummary() != null ? session.getSummary() : "";
 
-                                        String newMessagesText = formatConversation(newMessages);
+                    return chatMessageRepository
+                            .findAllBySessionIdAndSenderAndTimestampAfterOrderByTimestampAsc(
+                                    sessionId, Sender.USER, previousCheckpoint)
+                            .collectList()
+                            .flatMap(newMessages -> {
+                                if (newMessages.isEmpty()) {
+                                    logSummaryTrace(sessionId, 0, previousCheckpoint, previousCheckpoint, "SKIPPED",
+                                            "no_new_messages");
+                                    return Mono.empty();
+                                }
 
-                                        return callGeminiForSummarization(currentSummary, newMessagesText, userProfile)
-                                                .flatMap(result -> updateSessionWithSummary(session, result, userEmail));
-                                    });
-                        }))
+                                int newMessageCount = newMessages.size();
+                                logSummaryTrace(sessionId, newMessageCount, previousCheckpoint, null, "STARTED", null);
+
+                                return userProvider.getUserProfile(userEmail)
+                                        .flatMap(userProfile -> {
+                                            String newMessagesText = formatConversation(newMessages);
+                                            return callGeminiForSummarization(currentSummary, newMessagesText,
+                                                    userProfile)
+                                                    .flatMap(result -> persistSummaryAndIndex(session,
+                                                            result.newSummary, userEmail,
+                                                            previousCheckpoint, newMessageCount, result.facts));
+                                        });
+                            });
+                })
+                .switchIfEmpty(Mono.defer(() -> {
+                    logSummaryTrace(sessionId, 0, null, null, "SKIPPED", "session_not_found");
+                    return Mono.empty();
+                }))
+                .doOnError(e -> logSummaryTrace(sessionId, 0, null, null, "FAILED",
+                        "exception:" + e.getClass().getSimpleName()))
+                .doFinally(signal -> activeSessionSummaries.remove(sessionId))
                 .then();
     }
 
@@ -132,51 +154,52 @@ public class SummarizationService {
     }
 
     private static final java.util.Set<String> TEMPORARY_KEYS = java.util.Set.of(
-            "cam_xuc_hien_tai", "van_de_hien_tai", "mong_muon_ket_noi", "thoi_gian_trong"
-    );
+            "cam_xuc_hien_tai", "van_de_hien_tai", "mong_muon_ket_noi", "thoi_gian_trong");
 
-    private Mono<SummarizationResult> callGeminiForSummarization(String oldSummary, String newMessages, UserProfileResponse userProfile) {
+    private Mono<SummarizationResult> callGeminiForSummarization(String oldSummary, String newMessages,
+            UserProfileResponse userProfile) {
         String prompt = String.format(
-                "Phân tích cuộc trò chuyện sau và trích xuất thông tin về người dùng liên quan đến kết nối gia đình.\n" +
-                "Người dùng: %s (%s)\n\n" +
-                "TÓM TẮT CŨ: %s\n\n" +
-                "TIN NHẮN:\n%s\n\n" +
-                "Trả về JSON (KHÔNG thêm markdown):\n" +
-                "{\"newSummary\":\"tóm tắt ngắn dưới 80 từ\",\"extractedFacts\":[{\"key\":\"...\",\"value\":\"...\",\"confidence\":0.0,\"category\":\"PERMANENT|TEMPORARY\"}]}\n\n" +
-                "KEY HỢP LỆ (chỉ dùng các key này, bỏ qua nếu không có thông tin rõ ràng):\n" +
-                "PERMANENT — thông tin lâu dài:\n" +
-                "- so_thich: sở thích, hoạt động yêu thích\n" +
-                "- tinh_cach: tính cách, thói quen giao tiếp\n" +
-                "- quan_he_gia_dinh: thành viên gia đình, mối quan hệ\n" +
-                "- so_thich_am_thuc: món ăn, ẩm thực yêu thích\n" +
-                "- lich_su_tuong_tac: sự kiện quan trọng đã xảy ra với gia đình (cãi nhau, tặng quà, hòa giải...)\n" +
-                "TEMPORARY — thông tin tạm thời, sẽ bị thay thế lần sau:\n" +
-                "- cam_xuc_hien_tai: cảm xúc, tâm trạng hiện tại\n" +
-                "- van_de_hien_tai: vấn đề đang gặp phải\n" +
-                "- mong_muon_ket_noi: mong muốn kết nối với ai, rào cản giao tiếp\n" +
-                "- thoi_gian_trong: mốc thời gian rảnh được nhắc đến (ví dụ: rảnh tối thứ 7)\n\n" +
-                "QUY TẮC QUAN TRỌNG:\n" +
-                "- Mỗi key chỉ xuất hiện ĐÚNG 1 LẦN trong extractedFacts\n" +
-                "- Nếu có nhiều giá trị cho cùng 1 key, gộp vào 1 value duy nhất\n" +
-                "  Ví dụ: quan_he_gia_dinh: \"có chị gái, có mẹ\" (KHÔNG tách thành 2 facts)\n" +
-                "- Chỉ trích xuất nếu confidence >= 0.7. KHÔNG trích xuất: tên, email, ngày sinh, giới tính.",
+                "Phân tích cuộc trò chuyện sau và trích xuất thông tin về người dùng liên quan đến kết nối gia đình.\n"
+                        +
+                        "Người dùng: %s (%s)\n\n" +
+                        "TÓM TẮT CŨ: %s\n\n" +
+                        "TIN NHẮN:\n%s\n\n" +
+                        "Trả về JSON (KHÔNG thêm markdown):\n" +
+                        "{\"newSummary\":\"tóm tắt ngắn dưới 80 từ\",\"extractedFacts\":[{\"key\":\"...\",\"value\":\"...\",\"confidence\":0.0,\"category\":\"PERMANENT|TEMPORARY\"}]}\n\n"
+                        +
+                        "KEY HỢP LỆ (chỉ dùng các key này, bỏ qua nếu không có thông tin rõ ràng):\n" +
+                        "PERMANENT — thông tin lâu dài:\n" +
+                        "- so_thich: sở thích, hoạt động yêu thích\n" +
+                        "- tinh_cach: tính cách, thói quen giao tiếp\n" +
+                        "- quan_he_gia_dinh: thành viên gia đình, mối quan hệ\n" +
+                        "- so_thich_am_thuc: món ăn, ẩm thực yêu thích\n" +
+                        "- lich_su_tuong_tac: sự kiện quan trọng đã xảy ra với gia đình (cãi nhau, tặng quà, hòa giải...)\n"
+                        +
+                        "TEMPORARY — thông tin tạm thời, sẽ bị thay thế lần sau:\n" +
+                        "- cam_xuc_hien_tai: cảm xúc, tâm trạng hiện tại\n" +
+                        "- van_de_hien_tai: vấn đề đang gặp phải\n" +
+                        "- mong_muon_ket_noi: mong muốn kết nối với ai, rào cản giao tiếp\n" +
+                        "- thoi_gian_trong: mốc thời gian rảnh được nhắc đến (ví dụ: rảnh tối thứ 7)\n\n" +
+                        "QUY TẮC QUAN TRỌNG:\n" +
+                        "- Mỗi key chỉ xuất hiện ĐÚNG 1 LẦN trong extractedFacts\n" +
+                        "- Nếu có nhiều giá trị cho cùng 1 key, gộp vào 1 value duy nhất\n" +
+                        "  Ví dụ: quan_he_gia_dinh: \"có chị gái, có mẹ\" (KHÔNG tách thành 2 facts)\n" +
+                        "- Chỉ trích xuất nếu confidence >= 0.7. KHÔNG trích xuất: tên, email, ngày sinh, giới tính.",
                 userProfile.getFullName(),
                 userProfile.getEmail(),
                 oldSummary.isEmpty() ? "chưa có" : oldSummary,
-                newMessages
-        );
+                newMessages);
         Map<String, Object> body = Map.of(
                 "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", prompt)))),
                 "generationConfig", Map.of(
                         "temperature", 0.1,
-                        "responseMimeType", "application/json"
-                )
-        );
+                        "responseMimeType", "application/json"));
         return webClient.post()
                 .uri("/v1beta/models/gemini-2.5-flash:generateContent?key=" + API_KEY)
                 .bodyValue(body)
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {
+                })
                 .timeout(java.time.Duration.ofSeconds(timeoutSeconds))
                 .map(this::extractTextFromResponse)
                 .doOnNext(raw -> log.info("RAW GEMINI: {}", raw))
@@ -192,19 +215,19 @@ public class SummarizationService {
     private Mono<SummarizationResult> parseSummarizationResult(String rawResponse) {
         return Mono.fromCallable(() -> {
             String jsonOnly = extractJsonFromResponse(rawResponse);
-            
+
             if (jsonOnly.isEmpty()) {
                 throw new RuntimeException("No JSON found in AI response");
             }
 
             JsonNode root = objectMapper.readTree(jsonOnly);
-            
+
             JsonNode summaryNode = root.get("newSummary");
             if (summaryNode == null || summaryNode.asText().trim().isEmpty()) {
                 throw new RuntimeException("AI returned empty summary");
             }
             String newSummary = summaryNode.asText();
-            
+
             List<UserContext.Fact> facts = new ArrayList<>();
             JsonNode factsArray = root.get("extractedFacts");
             if (factsArray != null && factsArray.isArray()) {
@@ -212,10 +235,11 @@ public class SummarizationService {
                     String key = factNode.get("key").asText("");
                     String value = factNode.get("value").asText("");
                     double confidence = factNode.get("confidence").asDouble(0.5);
-                    
+
                     if (value.length() > 2 && confidence >= 0.7) {
                         String category = factNode.has("category") ? factNode.get("category").asText("") : "PERMANENT";
-                        if (!"TEMPORARY".equals(category)) category = "PERMANENT";
+                        if (!"TEMPORARY".equals(category))
+                            category = "PERMANENT";
                         UserContext.Fact fact = UserContext.Fact.builder()
                                 .key(key)
                                 .value(value)
@@ -239,7 +263,8 @@ public class SummarizationService {
                 if (endIdx > startIdx) {
                     return rawResponse.substring(startIdx, endIdx).trim();
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
 
         if (rawResponse.contains("```")) {
@@ -249,7 +274,8 @@ public class SummarizationService {
                 if (endIdx > startIdx) {
                     return rawResponse.substring(startIdx, endIdx).trim();
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
 
         Matcher matcher = JSON_PATTERN.matcher(rawResponse);
@@ -263,29 +289,31 @@ public class SummarizationService {
             if (startIdx >= 0 && endIdx > startIdx) {
                 return rawResponse.substring(startIdx, endIdx + 1);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         return "";
     }
 
-    private Mono<Void> updateSessionAndContext(ChatSession session, String summary, String userEmail, List<UserContext.Fact> facts) {
+    private Mono<Void> persistSummaryAndIndex(ChatSession session, String summary, String userEmail,
+            Instant previousCheckpoint, int newMessageCount, List<UserContext.Fact> facts) {
         if (summary == null || summary.isEmpty()) {
-            log.warn("[Summarization] Empty summary returned for session={}, skipping save", session.getId());
+            logSummaryTrace(session.getId(), newMessageCount, previousCheckpoint, previousCheckpoint, "SKIPPED",
+                    "empty_summary");
             return Mono.empty();
         }
 
         session.setSummary(summary);
-        session.setStatus("COMPLETED");
         session.setLastUpdate(Instant.now());
-        session.setLastSummarizedAt(Instant.now());
+        session.setStatus("ACTIVE");
 
         return chatSessionRepository.save(session)
-                .doOnNext(s -> log.info("[Summarization] Session saved as COMPLETED session={}", s.getId()))
                 .flatMap(savedSession -> userContextRepository.findByEmail(userEmail)
                         .defaultIfEmpty(UserContext.builder().email(userEmail).build())
                         .flatMap(context -> {
                             if (context.getId() == null) {
-                                log.info("[Summarization] Creating new UserContext for user={} facts={}", userEmail, facts.size());
+                                log.info("[Summarization] Creating new UserContext for user={} facts={}", userEmail,
+                                        facts.size());
                                 context.setFacts(facts);
                             } else {
                                 log.info("[Summarization] Merging facts for user={} newFacts={} existingFacts={}",
@@ -296,7 +324,29 @@ public class SummarizationService {
                         }))
                 .doOnNext(ctx -> log.info("[Summarization] UserContext saved for user={} totalFacts={}",
                         userEmail, ctx.getFacts().size()))
-                .then();
+                .flatMap(savedCtx -> qdrantSyncService.syncPendingFacts(userEmail)
+                        .then(qdrantSyncService.syncSessionSummary(session, userEmail))
+                        .onErrorResume(e -> {
+                            log.error("[Summarization] Qdrant sync failed for user={}, will retry next cycle",
+                                    userEmail, e);
+                            return Mono.error(e);
+                        }))
+                .then(Mono.defer(() -> {
+                    Instant newCheckpoint = Instant.now();
+                    session.setStatus("COMPLETED");
+                    session.setLastUpdate(newCheckpoint);
+                    session.setLastSummarizedAt(newCheckpoint);
+                    return chatSessionRepository.save(session).then();
+                }))
+                .doOnSuccess(v -> logSummaryTrace(session.getId(), newMessageCount, previousCheckpoint,
+                        session.getLastSummarizedAt(), "COMPLETED", null));
+    }
+
+    private void logSummaryTrace(String sessionId, int newMessageCount, Instant previousCheckpoint,
+            Instant newCheckpoint, String status, String skipReason) {
+        log.info(
+                "[Summarization] sessionId={} newMessageCount={} previousCheckpoint={} newCheckpoint={} status={} skipReason={}",
+                sessionId, newMessageCount, previousCheckpoint, newCheckpoint, status, skipReason);
     }
 
     private void mergeFacts(UserContext context, List<UserContext.Fact> newFacts) {
@@ -305,7 +355,8 @@ public class SummarizationService {
                 .filter(f -> f.getConfidence() != null && f.getConfidence() >= 0.7)
                 .toList();
 
-        // Bước 1: gộp các facts trùng key trong batch Gemini trả về trước khi merge vào context
+        // Bước 1: gộp các facts trùng key trong batch Gemini trả về trước khi merge vào
+        // context
         // Đảm bảo nếu Gemini vẫn tách, ta gộp lại trước — không mất data
         java.util.Map<String, UserContext.Fact> deduped = new java.util.LinkedHashMap<>();
         for (UserContext.Fact f : validFacts) {
@@ -340,11 +391,9 @@ public class SummarizationService {
                 .map(UserContext.Fact::getKey)
                 .collect(java.util.stream.Collectors.toSet());
 
-        context.getFacts().removeIf(existing ->
-                "TEMPORARY".equals(existing.getCategory())
+        context.getFacts().removeIf(existing -> "TEMPORARY".equals(existing.getCategory())
                 && TEMPORARY_KEYS.contains(existing.getKey())
-                && !newTemporaryKeys.contains(existing.getKey())
-        );
+                && !newTemporaryKeys.contains(existing.getKey()));
 
         // Bước 3: merge từng fact đã dedup vào context
         for (UserContext.Fact newFact : deduped.values()) {
@@ -375,21 +424,20 @@ public class SummarizationService {
         }
     }
 
-    private Mono<Void> updateSessionWithSummary(ChatSession session, SummarizationResult result, String userEmail) {
-        return updateSessionAndContext(session, result.newSummary, userEmail, result.facts);
-    }
-
     private String extractTextFromResponse(Map response) {
         try {
             List<?> candidates = (List<?>) response.get("candidates");
-            if (candidates == null || candidates.isEmpty()) return "";
+            if (candidates == null || candidates.isEmpty())
+                return "";
 
             Map<?, ?> firstCandidate = (Map<?, ?>) candidates.get(0);
             Map<?, ?> content = (Map<?, ?>) firstCandidate.get("content");
-            if (content == null) return "";
+            if (content == null)
+                return "";
 
             List<?> parts = (List<?>) content.get("parts");
-            if (parts == null || parts.isEmpty()) return "";
+            if (parts == null || parts.isEmpty())
+                return "";
 
             Map<?, ?> firstPart = (Map<?, ?>) parts.get(0);
             String text = (String) firstPart.get("text");
