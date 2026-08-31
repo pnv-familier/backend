@@ -158,6 +158,7 @@ public class AiController {
         private final StringBuilder tagBuffer = new StringBuilder();
         private final StringBuilder residualBuffer = new StringBuilder();
         private String currentTag = null;
+        private String metadataJson = null;
         private String suggestionsJson = null;
 
         private final String sessionId;
@@ -195,13 +196,28 @@ public class AiController {
         }
 
         private boolean findAndProcessTagStart(List<ServerSentEvent<String>> events) {
+            int metadataStart = residualBuffer.indexOf("<suggestion_metadata>");
             int suggestionsStart = residualBuffer.indexOf("<suggestions>");
 
-            if (suggestionsStart == -1) {
+            int firstStart = -1;
+            String foundTag = null;
+            int tagLength = 0;
+
+            if (metadataStart != -1 && (suggestionsStart == -1 || metadataStart < suggestionsStart)) {
+                firstStart = metadataStart;
+                foundTag = "suggestion_metadata";
+                tagLength = "<suggestion_metadata>".length();
+            } else if (suggestionsStart != -1) {
+                firstStart = suggestionsStart;
+                foundTag = "suggestions";
+                tagLength = "<suggestions>".length();
+            }
+
+            if (firstStart == -1) {
                 int lastOpen = residualBuffer.lastIndexOf("<");
                 if (lastOpen != -1) {
                     String potential = residualBuffer.substring(lastOpen);
-                    if ("<suggestions>".startsWith(potential)) {
+                    if ("<suggestion_metadata>".startsWith(potential) || "<suggestions>".startsWith(potential)) {
                         emitPlainText(residualBuffer.substring(0, lastOpen), events);
                         residualBuffer.delete(0, lastOpen);
                         return false;
@@ -211,15 +227,15 @@ public class AiController {
                 residualBuffer.setLength(0);
                 return false;
             } else {
-                emitPlainText(residualBuffer.substring(0, suggestionsStart), events);
-                currentTag = "suggestions";
-                residualBuffer.delete(0, suggestionsStart + "<suggestions>".length());
+                emitPlainText(residualBuffer.substring(0, firstStart), events);
+                currentTag = foundTag;
+                residualBuffer.delete(0, firstStart + tagLength);
                 return true;
             }
         }
 
         private boolean findAndProcessTagEnd(List<ServerSentEvent<String>> events) {
-            String closingTag = "</suggestions>";
+            String closingTag = "</" + currentTag + ">";
             int closingIdx = residualBuffer.indexOf(closingTag);
 
             if (closingIdx == -1) {
@@ -237,7 +253,12 @@ public class AiController {
                 return false;
             } else {
                 tagBuffer.append(residualBuffer.substring(0, closingIdx));
-                suggestionsJson = decodeHtmlEntities(tagBuffer.toString().trim());
+                String decoded = decodeHtmlEntities(tagBuffer.toString().trim());
+                if ("suggestion_metadata".equals(currentTag)) {
+                    metadataJson = decoded;
+                } else if ("suggestions".equals(currentTag)) {
+                    suggestionsJson = decoded;
+                }
                 residualBuffer.delete(0, closingIdx + closingTag.length());
                 tagBuffer.setLength(0);
                 currentTag = null;
@@ -255,8 +276,10 @@ public class AiController {
         public Flux<ServerSentEvent<String>> finalizeStream() {
             if (currentTag != null) {
                 log.warn("Stream ended inside <{}> for session {}.", currentTag, sessionId);
-                if ("suggestions".equals(currentTag)) {
-                    suggestionsJson = tagBuffer.toString();
+                if ("suggestion_metadata".equals(currentTag)) {
+                    metadataJson = decodeHtmlEntities(tagBuffer.toString().trim());
+                } else if ("suggestions".equals(currentTag)) {
+                    suggestionsJson = decodeHtmlEntities(tagBuffer.toString().trim());
                 }
                 tagBuffer.setLength(0);
                 currentTag = null;
@@ -271,7 +294,10 @@ public class AiController {
             chatService.saveAiMessage(sessionId, cleanContent.toString().trim(),
                     parseSuggestionsArray(suggestionsJson));
 
-            if (suggestionsJson != null) {
+            if (metadataJson != null && !metadataJson.isEmpty()) {
+                finalEvents.add(createEvent("metadata", metadataJson));
+            }
+            if (suggestionsJson != null && !suggestionsJson.isEmpty()) {
                 finalEvents.add(createEvent("suggestions", suggestionsJson));
             }
             finalEvents.add(createEvent("done", "[DONE]"));
@@ -279,8 +305,10 @@ public class AiController {
         }
 
         private void flushBuffersAsPlainText() {
-            if ("suggestions".equals(currentTag)) {
-                suggestionsJson = tagBuffer.toString();
+            if ("suggestion_metadata".equals(currentTag)) {
+                metadataJson = decodeHtmlEntities(tagBuffer.toString().trim());
+            } else if ("suggestions".equals(currentTag)) {
+                suggestionsJson = decodeHtmlEntities(tagBuffer.toString().trim());
             }
             tagBuffer.setLength(0);
             currentTag = null;
