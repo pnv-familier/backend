@@ -592,4 +592,92 @@ class FamilyAiToolsTest {
             assertThat(json.get("errorCode").asText()).isEqualTo("MISSING_USER_CONTEXT");
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tool 7: createScheduleEventSuggestion Tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("createScheduleEventSuggestion tests")
+    class CreateScheduleEventSuggestionTests {
+
+        @Test
+        @DisplayName("Successfully creates EVENT suggestion")
+        void createsEventSuggestionSuccessfully() throws Exception {
+            tools.setCurrentUserEmail(USER_EMAIL);
+
+            when(suggestionService.createSuggestion(eq(USER_EMAIL), eq(com.familier.ai.entity.SuggestionType.EVENT), any(), any()))
+                    .thenReturn(Mono.just("event-sugg-123"));
+
+            String result = tools.createScheduleEventSuggestion(
+                    "Dã ngoại cuối tuần",
+                    "09:00",
+                    "17:00",
+                    22,
+                    8,
+                    2026,
+                    "Công viên Gia Định",
+                    "Người dùng hỏi lịch cuối tuần",
+                    null);
+
+            var json = objectMapper.readTree(result);
+            assertThat(json.get("success").asBoolean()).isTrue();
+            assertThat(json.get("suggestionId").asText()).isEqualTo("event-sugg-123");
+            assertThat(json.get("type").asText()).isEqualTo("EVENT");
+        }
+
+        @Test
+        @DisplayName("Returns error JSON when email is missing")
+        void returnsErrorWhenEmailMissing() throws Exception {
+            tools.clearCurrentUserEmail();
+
+            String result = tools.createScheduleEventSuggestion(
+                    "Dã ngoại", "09:00", "17:00", 22, 8, 2026, "Công viên", "Context", null);
+
+            var json = objectMapper.readTree(result);
+            assertThat(json.get("success").asBoolean()).isFalse();
+            assertThat(json.get("errorCode").asText()).isEqualTo("MISSING_USER_CONTEXT");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tool 8: createOfflineActivitySuggestion Tests
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("createOfflineActivitySuggestion tests")
+    class CreateOfflineActivitySuggestionTests {
+
+        @Test
+        @DisplayName("Successfully creates OFFLINE suggestion")
+        void createsOfflineSuggestionSuccessfully() throws Exception {
+            tools.setCurrentUserEmail(USER_EMAIL);
+
+            when(suggestionService.createSuggestion(eq(USER_EMAIL), eq(com.familier.ai.entity.SuggestionType.OFFLINE), any(), any()))
+                    .thenReturn(Mono.just("offline-sugg-456"));
+
+            String result = tools.createOfflineActivitySuggestion(
+                    "Cùng đi dạo 30 phút buổi tối",
+                    "Người dùng cần gợi ý gắn kết",
+                    null);
+
+            var json = objectMapper.readTree(result);
+            assertThat(json.get("success").asBoolean()).isTrue();
+            assertThat(json.get("suggestionId").asText()).isEqualTo("offline-sugg-456");
+            assertThat(json.get("type").asText()).isEqualTo("OFFLINE");
+        }
+
+        @Test
+        @DisplayName("Returns error JSON when email is missing")
+        void returnsErrorWhenEmailMissing() throws Exception {
+            tools.clearCurrentUserEmail();
+
+            String result = tools.createOfflineActivitySuggestion(
+                    "Đi dạo", "Context", null);
+
+            var json = objectMapper.readTree(result);
+            assertThat(json.get("success").asBoolean()).isFalse();
+            assertThat(json.get("errorCode").asText()).isEqualTo("MISSING_USER_CONTEXT");
+        }
+    }
 }

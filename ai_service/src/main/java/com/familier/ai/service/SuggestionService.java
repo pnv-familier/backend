@@ -13,6 +13,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -138,6 +140,14 @@ public class SuggestionService {
     }
 
     private BasePayload parsePayload(String type, Object payloadObj) throws Exception {
+        if (payloadObj instanceof BasePayload bp) {
+            return bp;
+        }
+        if (payloadObj instanceof Map map && !map.containsKey("type")) {
+            Map<Object, Object> withType = new LinkedHashMap<>(map);
+            withType.put("type", type);
+            payloadObj = withType;
+        }
         String json = objectMapper.writeValueAsString(payloadObj);
 
         return switch (type) {

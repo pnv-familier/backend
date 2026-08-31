@@ -374,8 +374,10 @@ public class FamilyAiTools {
                 return "{\"tasksCreated\": 0}";
             }
 
-            Map<String, String> taskPayload = Map.of("title", title != null ? title : "", "description",
-                    description != null ? description : "");
+            Map<String, String> taskPayload = Map.of(
+                    "type", "TASK",
+                    "title", title != null ? title : "",
+                    "description", description != null ? description : "");
 
             long count = members.getMembers().stream()
                     .filter(m -> m.getEmail() != null && !m.getEmail().equals(email))
@@ -397,6 +399,99 @@ public class FamilyAiTools {
             log.error("[Tool] createTaskForFamily failed with exception", e);
             return "{\"success\": false, \"errorCode\": \"TOOL_EXECUTION_ERROR\", \"message\": \"" + e.getMessage()
                     + "\"}";
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tool 7: Create scheduled event / weekend plan suggestion (EVENT)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Tool(description = """
+            Creates a scheduled family event or weekend plan suggestion (EVENT type) for the user.
+            Call this when the user asks for weekend plans, outing suggestions, family trips, or scheduled gatherings.
+            Parameters:
+            - title: Short descriptive title of the event (e.g. 'Dã ngoại cuối tuần cùng gia đình')
+            - startTime: Format HH:mm (e.g., '09:00', '18:30')
+            - endTime: Format HH:mm (e.g., '12:00', '21:00')
+            - date: Day of month (1-31)
+            - month: Month (1-12)
+            - year: Year (e.g., 2026)
+            - location: Location or venue (e.g., 'Công viên Gia Định', 'Tại nhà')
+            - triggerContext: Brief context explaining why this event was suggested
+            """)
+    public String createScheduleEventSuggestion(
+            String title, String startTime, String endTime,
+            Integer date, Integer month, Integer year,
+            String location, String triggerContext, ToolContext toolContext) {
+        recordToolExecution("createScheduleEventSuggestion");
+        String email = resolveEmail(toolContext);
+        if (email == null || email.isBlank()) {
+            log.warn("[Tool] createScheduleEventSuggestion: currentUserEmail is missing");
+            return "{\"success\": false, \"errorCode\": \"MISSING_USER_CONTEXT\", \"message\": \"Authenticated user is required\"}";
+        }
+        try {
+            Map<String, Object> eventPayload = new LinkedHashMap<>();
+            eventPayload.put("type", "EVENT");
+            eventPayload.put("title", title != null ? title : "Lịch hoạt động gia đình");
+            eventPayload.put("startTime", startTime != null ? startTime : "09:00");
+            eventPayload.put("endTime", endTime != null ? endTime : "11:00");
+            eventPayload.put("date", date != null ? date : java.time.LocalDate.now().getDayOfMonth());
+            eventPayload.put("month", month != null ? month : java.time.LocalDate.now().getMonthValue());
+            eventPayload.put("year", year != null ? year : java.time.LocalDate.now().getYear());
+            eventPayload.put("location", location != null ? location : "Chưa xác định");
+
+            String suggestionId = suggestionService.createSuggestion(
+                    email,
+                    SuggestionType.EVENT,
+                    eventPayload,
+                    triggerContext != null ? triggerContext : "Người dùng yêu cầu lên lịch trình")
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .block();
+
+            log.info("[Tool] Created EVENT suggestion id={} for user={}", suggestionId, email);
+            return "{\"success\": true, \"suggestionId\": \"" + suggestionId + "\", \"type\": \"EVENT\"}";
+        } catch (Exception e) {
+            log.error("[Tool] createScheduleEventSuggestion failed with exception", e);
+            return "{\"success\": false, \"errorCode\": \"TOOL_EXECUTION_ERROR\", \"message\": \"" + e.getMessage() + "\"}";
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tool 8: Create offline activity suggestion (OFFLINE)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Tool(description = """
+            Creates an offline connection/bonding activity suggestion (OFFLINE type) for the user.
+            Call this when the user asks for quick bonding ideas, evening activities, or offline family connection suggestions.
+            Parameters:
+            - action: Concrete action description (e.g., 'Cùng đi dạo quanh khu phố 30 phút sau bữa tối')
+            - triggerContext: Brief context explaining why this activity was suggested
+            """)
+    public String createOfflineActivitySuggestion(String action, String triggerContext, ToolContext toolContext) {
+        recordToolExecution("createOfflineActivitySuggestion");
+        String email = resolveEmail(toolContext);
+        if (email == null || email.isBlank()) {
+            log.warn("[Tool] createOfflineActivitySuggestion: currentUserEmail is missing");
+            return "{\"success\": false, \"errorCode\": \"MISSING_USER_CONTEXT\", \"message\": \"Authenticated user is required\"}";
+        }
+        try {
+            Map<String, Object> offlinePayload = new LinkedHashMap<>();
+            offlinePayload.put("type", "OFFLINE");
+            offlinePayload.put("action", action != null ? action : "Hoạt động kết nối gia đình");
+
+            String suggestionId = suggestionService.createSuggestion(
+                    email,
+                    SuggestionType.OFFLINE,
+                    offlinePayload,
+                    triggerContext != null ? triggerContext : "Gợi ý hoạt động gắn kết offline")
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .block();
+
+            log.info("[Tool] Created OFFLINE suggestion id={} for user={}", suggestionId, email);
+            return "{\"success\": true, \"suggestionId\": \"" + suggestionId + "\", \"type\": \"OFFLINE\"}";
+        } catch (Exception e) {
+            log.error("[Tool] createOfflineActivitySuggestion failed with exception", e);
+            return "{\"success\": false, \"errorCode\": \"TOOL_EXECUTION_ERROR\", \"message\": \"" + e.getMessage() + "\"}";
         }
     }
 
